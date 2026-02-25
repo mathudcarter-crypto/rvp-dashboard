@@ -110,6 +110,7 @@
       const [metric, setMetric] = useState('sales');
       const [selectedStore, setSelectedStore] = useState(null);
       const [reportDate, setReportDate] = useState(null);
+      const [createdTime, setCreatedTime] = useState(null);
       const [error, setError] = useState(null);
       const [isAuthenticated, setIsAuthenticated] = useState(false);
       const [authError, setAuthError] = useState(null);
@@ -194,8 +195,8 @@
           data.records.forEach(record => {
             const fields = record.fields;
             const storeName = fields['Store'];
-            const date = new Date(fields['Date']);
-            if (!storeMap[storeName] || new Date(storeMap[storeName].fields['Date']) < date) {
+            const created = new Date(fields['Created'] || record.createdTime || 0);
+            if (!storeMap[storeName] || new Date(storeMap[storeName].fields['Created'] || storeMap[storeName].createdTime || 0) < created) {
               storeMap[storeName] = record;
             }
           });
@@ -203,7 +204,10 @@
           const latestStores = Object.values(storeMap).map(record => record.fields);
           setStores(latestStores);
           
-          if (latestStores.length > 0) setReportDate(latestStores[0]['Date']);
+          if (latestStores.length > 0) {
+            setReportDate(latestStores[0]['Date']);
+            setCreatedTime(latestStores[0]['Created'] || null);
+          }
           setLoading(false);
         } catch (err) {
           setError(err.message);
@@ -354,6 +358,11 @@
             <div>
               <h1 className="text-2xl font-bold mb-1" style={{ color: neonGreen }}>RVP Dashboard</h1>
               <p className="text-sm text-slate-400">{reportDate || 'Loading...'}</p>
+              {createdTime && (
+                <p className="text-xs text-slate-500">
+                  Updated {new Date(createdTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              )}
             </div>
             <button onClick={handleLogout} className="text-xs text-slate-500 hover:text-slate-300">Logout</button>
           </div>
