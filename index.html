@@ -18,6 +18,14 @@
     // UPDATE THIS WITH YOUR CLOUDFLARE WORKER URL
     const API_URL = "https://tight-waterfall-1040.mathudcarter.workers.dev/api/stores";
 
+    // Use Airtable-provided abbreviation, fall back to stripping "Home Outlet" if missing
+    const getAbbrev = (store) => {
+      if (store['Store Abbrev']) return store['Store Abbrev'];
+      if (!store['Store']) return '?';
+      const parts = store['Store'].replace('Home Outlet', '').trim().split(' ');
+      return parts[0] || store['Store'];
+    };
+
     const ArrowUp = ({ className, style }) => (
       <svg className={className} style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <line x1="12" y1="19" x2="12" y2="5"></line>
@@ -98,7 +106,7 @@
     function RVPDashboard() {
       const [stores, setStores] = useState([]);
       const [loading, setLoading] = useState(true);
-      const [timeframe, setTimeframe] = useState('day');
+      const [timeframe, setTimeframe] = useState('today');
       const [metric, setMetric] = useState('sales');
       const [selectedStore, setSelectedStore] = useState(null);
       const [reportDate, setReportDate] = useState(null);
@@ -110,8 +118,27 @@
       const neonGreen = '#00FF41';
       const neonRed = '#FF0055';
 
+      // Field name map: timeframe + metric -> Airtable field name
+      // CSV fields: Store, Date, Sales_Today, Sales_TodayLY, GP_Today, GP_TodayLY,
+      //             Sales_WTD, Sales_WTDLY, GP_WTD, GP_WTDLY,
+      //             Sales_MTD, Sales_MTDLY, GP_MTD, GP_MTDLY,
+      //             Sales_YTD, Sales_YTDLY, GP_YTD, GP_YTDLY
+      const fieldMap = {
+        sales: {
+          today: { current: 'Sales_Today', ly: 'Sales_TodayLY' },
+          wtd:   { current: 'Sales_WTD',   ly: 'Sales_WTDLY'   },
+          mtd:   { current: 'Sales_MTD',   ly: 'Sales_MTDLY'   },
+          ytd:   { current: 'Sales_YTD',   ly: 'Sales_YTDLY'   },
+        },
+        gp: {
+          today: { current: 'GP_Today', ly: 'GP_TodayLY' },
+          wtd:   { current: 'GP_WTD',   ly: 'GP_WTDLY'   },
+          mtd:   { current: 'GP_MTD',   ly: 'GP_MTDLY'   },
+          ytd:   { current: 'GP_YTD',   ly: 'GP_YTDLY'   },
+        }
+      };
+
       useEffect(() => {
-        // Check for saved password
         const savedPassword = localStorage.getItem('rvp-dashboard-password');
         if (savedPassword) {
           setPassword(savedPassword);
@@ -149,30 +176,25 @@
           setAuthError(null);
           
           const response = await fetch(API_URL, {
-            headers: {
-              'X-App-Password': password
-            }
+            headers: { 'X-App-Password': password }
           });
           
           if (response.status === 401) {
-            // Wrong password
             setAuthError('Invalid password. Please try again.');
             handleLogout();
             return;
           }
           
-          if (!response.ok) {
-            throw new Error('Failed to fetch data');
-          }
+          if (!response.ok) throw new Error('Failed to fetch data');
 
           const data = await response.json();
           
+          // Keep only the latest record per store
           const storeMap = {};
           data.records.forEach(record => {
             const fields = record.fields;
-            const storeName = fields['Store Name'];
+            const storeName = fields['Store'];
             const date = new Date(fields['Date']);
-            
             if (!storeMap[storeName] || new Date(storeMap[storeName].fields['Date']) < date) {
               storeMap[storeName] = record;
             }
@@ -181,9 +203,7 @@
           const latestStores = Object.values(storeMap).map(record => record.fields);
           setStores(latestStores);
           
-          if (latestStores.length > 0) {
-            setReportDate(latestStores[0]['Date']);
-          }
+          if (latestStores.length > 0) setReportDate(latestStores[0]['Date']);
           setLoading(false);
         } catch (err) {
           setError(err.message);
@@ -203,43 +223,34 @@
       };
 
       const calculateChange = (current, lastYear) => {
-        if (!lastYear || lastYear === 0) return 0;
+        if (!lastYear || lastYear === 0) return null;
         return ((current - lastYear) / lastYear) * 100;
       };
 
-      const getCurrentValue = (store) => {
-        if (metric === 'sales') {
-          if (timeframe === 'day') return store['Sales Day'];
-          if (timeframe === 'week') return store['Sales Week'];
-          return store['Sales Year'];
-        } else {
-          if (timeframe === 'day') return store['GP Dollars Day'];
-          if (timeframe === 'week') return store['GP Dollars Week'];
-          return store['GP Dollars Year'];
-        }
-      };
+      const getCurrentValue = (store) => store[fieldMap[metric][timeframe].current] || 0;
+      const getLastYearValue = (store) => store[fieldMap[metric][timeframe].ly] || 0;
 
-      const getLastYearValue = (store) => {
-        if (metric === 'sales') {
-          if (timeframe === 'day') return store['Sales Day LY'];
-          if (timeframe === 'week') return store['Sales Week LY'];
-          return store['Sales Year LY'];
-        } else {
-          if (timeframe === 'day') return store['GP Dollars Day LY'];
-          if (timeframe === 'week') return store['GP Dollars Week LY'];
-          return store['GP Dollars Year LY'];
-        }
-      };
-
-      const getTotalValue = () => {
-        return stores.reduce((sum, store) => sum + (getCurrentValue(store) || 0), 0);
-      };
-
-      const getTotalLYValue = () => {
-        return stores.reduce((sum, store) => sum + (getLastYearValue(store) || 0), 0);
-      };
-
+      const getTotalValue = () => stores.reduce((sum, s) => sum + (getCurrentValue(s) || 0), 0);
+      const getTotalLYValue = () => stores.reduce((sum, s) => sum + (getLastYearValue(s) || 0), 0);
       const totalChange = calculateChange(getTotalValue(), getTotalLYValue());
+
+      const ChangeLabel = ({ current, ly }) => {
+        const change = calculateChange(current, ly);
+        if (change === null) return <span className="text-xs text-slate-500">No LY data</span>;
+        return (
+          <span className="text-xs font-mono" style={{ color: change >= 0 ? neonGreen : neonRed }}>
+            {change >= 0 ? '+' : ''}{change.toFixed(1)}%
+          </span>
+        );
+      };
+
+      const MetricBlock = ({ label, currentField, lyField, store }) => (
+        <div>
+          <div className="text-xs text-slate-500">{label}</div>
+          <div className="text-lg font-mono">{formatCurrency(store[currentField])}</div>
+          <ChangeLabel current={store[currentField]} ly={store[lyField]} />
+        </div>
+      );
 
       if (loading) {
         return (
@@ -257,18 +268,8 @@
               <div className="text-xl mb-2">Error Loading Data</div>
               <div className="text-sm text-slate-400 mb-4">{error}</div>
               <div className="flex gap-3 justify-center">
-                <button
-                  onClick={fetchStoreData}
-                  className="px-6 py-2 bg-green-500 hover:bg-green-600 rounded"
-                >
-                  Retry
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded"
-                >
-                  Logout
-                </button>
+                <button onClick={fetchStoreData} className="px-6 py-2 bg-green-500 hover:bg-green-600 rounded">Retry</button>
+                <button onClick={handleLogout} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded">Logout</button>
               </div>
             </div>
           </div>
@@ -281,163 +282,72 @@
             <div className="text-center">
               <div className="text-4xl mb-4">📊</div>
               <div className="text-xl mb-2">No Data Available</div>
-              <div className="text-sm text-slate-400 mb-4">Waiting for daily RVP Summary data</div>
-              <button
-                onClick={handleLogout}
-                className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded"
-              >
-                Logout
-              </button>
+              <div className="text-sm text-slate-400 mb-4">Waiting for daily sales data</div>
+              <button onClick={handleLogout} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded">Logout</button>
             </div>
           </div>
         );
       }
 
+      // ── Store Detail View ──────────────────────────────────────────────────────
       if (selectedStore) {
+        const s = selectedStore;
         return (
           <div className="min-h-screen bg-slate-950 text-white p-4">
             <div className="flex justify-between items-center mb-4">
-              <button 
-                onClick={() => setSelectedStore(null)}
-                className="flex items-center gap-2"
-                style={{ color: neonGreen }}
-              >
+              <button onClick={() => setSelectedStore(null)} className="flex items-center gap-2" style={{ color: neonGreen }}>
                 ← Back to Overview
               </button>
-              <button
-                onClick={handleLogout}
-                className="text-xs text-slate-500 hover:text-slate-300"
-              >
-                Logout
-              </button>
+              <button onClick={handleLogout} className="text-xs text-slate-500 hover:text-slate-300">Logout</button>
             </div>
             
             <div className="mb-6">
-              <h2 className="text-2xl font-bold" style={{ color: neonGreen }}>{selectedStore['Store Abbrev']}</h2>
-              <p className="text-sm text-slate-400">{selectedStore['Store Name']}</p>
+              <h2 className="text-2xl font-bold" style={{ color: neonGreen }}>{getAbbrev(s)}</h2>
+              <p className="text-sm text-slate-400">{s['Store']}</p>
+              <p className="text-xs text-slate-500 mt-1">{s['Date']}</p>
             </div>
 
             <div className="space-y-4">
+
+              {/* Sales */}
               <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-                <h3 className="text-slate-400 text-sm mb-3">Sales Performance</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <div className="text-xs text-slate-500">Day</div>
-                    <div className="text-lg font-mono">{formatCurrency(selectedStore['Sales Day'])}</div>
-                    <div className="text-xs" style={{ color: calculateChange(selectedStore['Sales Day'], selectedStore['Sales Day LY']) >= 0 ? neonGreen : neonRed }}>
-                      {calculateChange(selectedStore['Sales Day'], selectedStore['Sales Day LY']).toFixed(1)}%
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Week</div>
-                    <div className="text-lg font-mono">{formatCurrency(selectedStore['Sales Week'])}</div>
-                    <div className="text-xs" style={{ color: calculateChange(selectedStore['Sales Week'], selectedStore['Sales Week LY']) >= 0 ? neonGreen : neonRed }}>
-                      {calculateChange(selectedStore['Sales Week'], selectedStore['Sales Week LY']).toFixed(1)}%
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Year</div>
-                    <div className="text-lg font-mono">{formatCurrency(selectedStore['Sales Year'])}</div>
-                    <div className="text-xs" style={{ color: calculateChange(selectedStore['Sales Year'], selectedStore['Sales Year LY']) >= 0 ? neonGreen : neonRed }}>
-                      {calculateChange(selectedStore['Sales Year'], selectedStore['Sales Year LY']).toFixed(1)}%
-                    </div>
-                  </div>
+                <h3 className="text-slate-400 text-sm mb-3">Sales</h3>
+                <div className="grid grid-cols-4 gap-3">
+                  <MetricBlock label="Today"  currentField="Sales_Today" lyField="Sales_TodayLY" store={s} />
+                  <MetricBlock label="WTD"    currentField="Sales_WTD"   lyField="Sales_WTDLY"   store={s} />
+                  <MetricBlock label="MTD"    currentField="Sales_MTD"   lyField="Sales_MTDLY"   store={s} />
+                  <MetricBlock label="YTD"    currentField="Sales_YTD"   lyField="Sales_YTDLY"   store={s} />
                 </div>
               </div>
 
+              {/* GP Dollars */}
               <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
                 <h3 className="text-slate-400 text-sm mb-3">GP Dollars</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <div className="text-xs text-slate-500">Day</div>
-                    <div className="text-lg font-mono">{formatCurrency(selectedStore['GP Dollars Day'])}</div>
-                    <div className="text-xs" style={{ color: calculateChange(selectedStore['GP Dollars Day'], selectedStore['GP Dollars Day LY']) >= 0 ? neonGreen : neonRed }}>
-                      {calculateChange(selectedStore['GP Dollars Day'], selectedStore['GP Dollars Day LY']).toFixed(1)}%
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Week</div>
-                    <div className="text-lg font-mono">{formatCurrency(selectedStore['GP Dollars Week'])}</div>
-                    <div className="text-xs" style={{ color: calculateChange(selectedStore['GP Dollars Week'], selectedStore['GP Dollars Week LY']) >= 0 ? neonGreen : neonRed }}>
-                      {calculateChange(selectedStore['GP Dollars Week'], selectedStore['GP Dollars Week LY']).toFixed(1)}%
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Year</div>
-                    <div className="text-lg font-mono">{formatCurrency(selectedStore['GP Dollars Year'])}</div>
-                    <div className="text-xs" style={{ color: calculateChange(selectedStore['GP Dollars Year'], selectedStore['GP Dollars Year LY']) >= 0 ? neonGreen : neonRed }}>
-                      {calculateChange(selectedStore['GP Dollars Year'], selectedStore['GP Dollars Year LY']).toFixed(1)}%
-                    </div>
-                  </div>
+                <div className="grid grid-cols-4 gap-3">
+                  <MetricBlock label="Today"  currentField="GP_Today" lyField="GP_TodayLY" store={s} />
+                  <MetricBlock label="WTD"    currentField="GP_WTD"   lyField="GP_WTDLY"   store={s} />
+                  <MetricBlock label="MTD"    currentField="GP_MTD"   lyField="GP_MTDLY"   store={s} />
+                  <MetricBlock label="YTD"    currentField="GP_YTD"   lyField="GP_YTDLY"   store={s} />
                 </div>
               </div>
 
+              {/* GP% YTD */}
               <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
                 <h3 className="text-slate-400 text-sm mb-3">GP %</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <div className="text-xs text-slate-500">Day</div>
-                    <div className="text-lg font-mono">{selectedStore['GP Percent Day']}%</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Week</div>
-                    <div className="text-lg font-mono">{selectedStore['GP Percent Week']}%</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Year</div>
-                    <div className="text-lg font-mono">{selectedStore['GP Percent Year']}%</div>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500">YTD</span>
+                  <span className="text-2xl font-mono font-bold" style={{ color: neonGreen }}>
+                    {s['GP%_YTD'] != null ? s['GP%_YTD'] : '—'}
+                  </span>
                 </div>
               </div>
 
-              <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-                <h3 className="text-slate-400 text-sm mb-3">Deposits & Orders</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-xs text-slate-500 mb-1">Daily Open Deposits</div>
-                    <div className="text-xl font-mono" style={{ color: neonGreen }}>{formatCurrency(selectedStore['Daily Open Deposits'])}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-1">Total Dep On Order</div>
-                    <div className="text-xl font-mono" style={{ color: neonGreen }}>{formatCurrency(selectedStore['Total Dep On Order'])}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-                <h3 className="text-slate-400 text-sm mb-3">Daily Metrics</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-xs text-slate-500 mb-1">Adjustments</div>
-                    <div className="text-lg font-mono" style={{ color: selectedStore['Adjustments'] >= 0 ? neonGreen : neonRed }}>
-                      {selectedStore['Adjustments'] >= 0 ? '+' : ''}${selectedStore['Adjustments']}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-1">Cost Variance</div>
-                    <div className="text-lg font-mono" style={{ color: selectedStore['Cost Variance'] >= 0 ? neonGreen : neonRed }}>
-                      {selectedStore['Cost Variance'] >= 0 ? '+' : ''}${selectedStore['Cost Variance']}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-1">Lodgements</div>
-                    <div className="text-lg font-mono" style={{ color: selectedStore['Lodgements'] >= 0 ? neonGreen : neonRed }}>
-                      {selectedStore['Lodgements'] >= 0 ? '+' : ''}${selectedStore['Lodgements']}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-1">Over/Short</div>
-                    <div className="text-lg font-mono" style={{ color: selectedStore['Over Short'] >= 0 ? neonGreen : neonRed }}>
-                      {selectedStore['Over Short'] >= 0 ? '+' : ''}${selectedStore['Over Short']}
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         );
       }
 
+      // ── Main Overview ─────────────────────────────────────────────────────────
       return (
         <div className="min-h-screen bg-slate-950 text-white p-4">
           <div className="flex justify-between items-center mb-6">
@@ -445,48 +355,53 @@
               <h1 className="text-2xl font-bold mb-1" style={{ color: neonGreen }}>RVP Dashboard</h1>
               <p className="text-sm text-slate-400">{reportDate || 'Loading...'}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="text-xs text-slate-500 hover:text-slate-300"
-            >
-              Logout
-            </button>
+            <button onClick={handleLogout} className="text-xs text-slate-500 hover:text-slate-300">Logout</button>
           </div>
 
+          {/* Total Banner */}
           <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
-            <div className="text-sm text-slate-400 mb-1">Total {metric === 'sales' ? 'Sales' : 'GP$'}</div>
+            <div className="text-sm text-slate-400 mb-1">Total {metric === 'sales' ? 'Sales' : 'GP$'} — {timeframe.toUpperCase()}</div>
             <div className="text-3xl font-mono font-bold mb-1" style={{ color: neonGreen }}>
               {formatCurrency(getTotalValue())}
             </div>
-            <div className="flex items-center gap-2">
-              {totalChange >= 0 ? (
-                <ArrowUp className="w-4 h-4" style={{ color: neonGreen }} />
-              ) : (
-                <ArrowDown className="w-4 h-4" style={{ color: neonRed }} />
-              )}
-              <span className="text-sm font-mono" style={{ color: totalChange >= 0 ? neonGreen : neonRed }}>
-                {totalChange.toFixed(1)}% vs LY
-              </span>
-            </div>
+            {totalChange !== null && (
+              <div className="flex items-center gap-2">
+                {totalChange >= 0
+                  ? <ArrowUp className="w-4 h-4" style={{ color: neonGreen }} />
+                  : <ArrowDown className="w-4 h-4" style={{ color: neonRed }} />
+                }
+                <span className="text-sm font-mono" style={{ color: totalChange >= 0 ? neonGreen : neonRed }}>
+                  {totalChange.toFixed(1)}% vs LY
+                </span>
+              </div>
+            )}
           </div>
 
+          {/* Controls */}
           <div className="flex gap-3 mb-6">
+            {/* Timeframe */}
             <div className="flex-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
-              <div className="grid grid-cols-3 gap-1">
-                {['day', 'week', 'year'].map((tf) => (
+              <div className="grid grid-cols-4 gap-1">
+                {[
+                  { value: 'today', label: 'Today' },
+                  { value: 'wtd',   label: 'WTD'   },
+                  { value: 'mtd',   label: 'MTD'   },
+                  { value: 'ytd',   label: 'YTD'   },
+                ].map((tf) => (
                   <button
-                    key={tf}
-                    onClick={() => setTimeframe(tf)}
-                    className={'py-2 px-3 rounded text-xs font-medium transition-colors ' + (timeframe === tf ? 'text-slate-950' : 'text-slate-400 hover:text-slate-200')}
-                    style={timeframe === tf ? { backgroundColor: neonGreen } : {}}
+                    key={tf.value}
+                    onClick={() => setTimeframe(tf.value)}
+                    className={'py-2 px-2 rounded text-xs font-medium transition-colors ' + (timeframe === tf.value ? 'text-slate-950' : 'text-slate-400 hover:text-slate-200')}
+                    style={timeframe === tf.value ? { backgroundColor: neonGreen } : {}}
                   >
-                    {tf.charAt(0).toUpperCase() + tf.slice(1)}
+                    {tf.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="flex-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+            {/* Metric */}
+            <div className="bg-slate-900 rounded-lg p-1 border border-slate-800">
               <div className="grid grid-cols-2 gap-1">
                 {[{ value: 'sales', label: 'Sales' }, { value: 'gp', label: 'GP$' }].map((m) => (
                   <button
@@ -502,6 +417,7 @@
             </div>
           </div>
 
+          {/* Store List */}
           <div className="space-y-2">
             {[...stores].sort((a, b) => getCurrentValue(b) - getCurrentValue(a)).map((store) => {
               const currentValue = getCurrentValue(store);
@@ -510,24 +426,28 @@
               
               return (
                 <button
-                  key={store['Store Abbrev']}
+                  key={store['Store']}
                   onClick={() => setSelectedStore(store)}
                   className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg p-4 border border-slate-800 transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1">
                       <div className="text-left">
-                        <div className="font-mono font-bold" style={{ color: neonGreen }}>{store['Store Abbrev']}</div>
-                        <div className="text-xs text-slate-500">{store['Store Name']}</div>
+                        <div className="font-mono font-bold" style={{ color: neonGreen }}>{getAbbrev(store)}</div>
+                        <div className="text-xs text-slate-500">{store['Store']}</div>
                       </div>
                     </div>
                     
                     <div className="flex items-center gap-4">
                       <div className="text-right">
                         <div className="font-mono text-lg">{formatCurrency(currentValue)}</div>
-                        <div className="text-xs font-mono" style={{ color: change >= 0 ? neonGreen : neonRed }}>
-                          {change >= 0 ? '+' : ''}{change.toFixed(1)}%
-                        </div>
+                        {change !== null ? (
+                          <div className="text-xs font-mono" style={{ color: change >= 0 ? neonGreen : neonRed }}>
+                            {change >= 0 ? '+' : ''}{change.toFixed(1)}%
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-600">No LY</div>
+                        )}
                       </div>
                       <ChevronRight className="w-5 h-5 text-slate-600" />
                     </div>
