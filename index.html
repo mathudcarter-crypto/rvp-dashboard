@@ -11,10 +11,8 @@
 </head>
 <body>
   <div id="root"></div>
-  
   <script type="text/babel">
     const { useState, useEffect } = React;
-    
     const API_URL = "https://tight-waterfall-1040.mathudcarter.workers.dev/api/stores";
 
     const DEFAULT_PRESETS = [
@@ -31,317 +29,262 @@
     ];
 
     const STORAGE_KEY = 'rvp-preset-messages';
+    const loadPresets = () => { try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : DEFAULT_PRESETS; } catch { return DEFAULT_PRESETS; } };
+    const savePresets = (msgs) => localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
 
-    const loadPresets = () => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        return saved ? JSON.parse(saved) : DEFAULT_PRESETS;
-      } catch { return DEFAULT_PRESETS; }
+    const getCity = (store) => { if (!store['Store']) return '?'; return store['Store'].replace('Home Outlet', '').trim(); };
+    const getAbbrev = (store) => { if (store['Store Abbrev']) return store['Store Abbrev']; return getCity(store).split(' ')[0]; };
+
+    const fmtCurrency = v => { if (!v && v !== 0) return '$0'; if (v >= 1000000) return '$' + (v/1000000).toFixed(2) + 'M'; if (v >= 1000) return '$' + (v/1000).toFixed(1) + 'K'; return '$' + v.toFixed(0); };
+
+    const FIELD_MAP = {
+      sales: { today:{current:'Sales_Today',ly:'Sales_TodayLY'}, wtd:{current:'Sales_WTD',ly:'Sales_WTDLY'}, mtd:{current:'Sales_MTD',ly:'Sales_MTDLY'}, ytd:{current:'Sales_YTD',ly:'Sales_YTDLY'} },
+      gp:    { today:{current:'GP_Today',ly:'GP_TodayLY'}, wtd:{current:'GP_WTD',ly:'GP_WTDLY'}, mtd:{current:'GP_MTD',ly:'GP_MTDLY'}, ytd:{current:'GP_YTD',ly:'GP_YTDLY'} }
+    };
+    const TIME_LABEL = { today:'Today', wtd:'This Week', mtd:'This Month', ytd:'This Year' };
+
+    // Generate smart contextual message for a store
+    const buildSmartMessage = (store, allStores, timeframe, metric) => {
+      const field = FIELD_MAP[metric][timeframe].current;
+      const metricLabel = metric === 'sales' ? 'Sales' : 'GP$';
+      const timeLabel = TIME_LABEL[timeframe];
+      const city = getCity(store);
+      const myVal = store[field] || 0;
+
+      const sorted = [...allStores].sort((a, b) => (b[field] || 0) - (a[field] || 0));
+      const myRank = sorted.findIndex(s => s['Store'] === store['Store']) + 1;
+      const total = sorted.length;
+
+      if (myRank === 1) {
+        return `🏆 ${city} is leading the pack in ${metricLabel} ${timeLabel} at ${fmtCurrency(myVal)}! You're #1 — keep that energy going! 🔥`;
+      }
+
+      const ahead = sorted[myRank - 2]; // store directly ahead
+      const aheadCity = getCity(ahead);
+      const aheadVal = ahead[field] || 0;
+      const diff = fmtCurrency(aheadVal - myVal);
+
+      const suffix = myRank === total ? '(last place)' : `(#${myRank} of ${total})`;
+      return `📊 ${city} — you're only ${diff} behind ${aheadCity} for #${myRank - 1} in ${metricLabel} ${timeLabel} ${suffix}. You've got this! 💪`;
     };
 
-    const savePresets = (msgs) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
+    // Weekly chart
+    const DAY_LABELS = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
+    const getWeekDays = (referenceDate) => {
+      const d = new Date(referenceDate + 'T12:00:00');
+      const daysFromSat = (d.getDay() + 1) % 7;
+      const sat = new Date(d); sat.setDate(d.getDate() - daysFromSat);
+      const days = [];
+      for (let i = 0; i < 7; i++) { const dd = new Date(sat); dd.setDate(sat.getDate() + i); days.push(dd.toISOString().split('T')[0]); }
+      return days;
     };
 
-    const getAbbrev = (store) => {
-      if (store['Store Abbrev']) return store['Store Abbrev'];
-      if (!store['Store']) return '?';
-      const parts = store['Store'].replace('Home Outlet', '').trim().split(' ');
-      return parts[0] || store['Store'];
-    };
+    function WeeklyChart({ storeName, allRecords, neonGreen }) {
+      const storeRecords = allRecords.filter(r => r.fields['Store'] === storeName);
+      if (storeRecords.length === 0) return null;
+      const latestDate = storeRecords.map(r => r.fields['Date']).filter(Boolean).sort().reverse()[0];
+      if (!latestDate) return null;
+      const weekDays = getWeekDays(latestDate);
+      const barData = weekDays.map((date, idx) => {
+        const dayRecs = storeRecords.filter(r => r.fields['Date'] === date).sort((a,b) => new Date(b.fields['Created']||b.createdTime||0) - new Date(a.fields['Created']||a.createdTime||0));
+        const val = dayRecs.length > 0 ? (dayRecs[0].fields['Sales_Today'] || 0) : null;
+        return { date, val, label: DAY_LABELS[idx], isToday: date === latestDate };
+      });
+      const maxVal = Math.max(...barData.map(d => d.val || 0), 1);
+      const fmtK = v => v >= 1000000 ? '$'+(v/1000000).toFixed(1)+'M' : v >= 1000 ? '$'+(v/1000).toFixed(0)+'K' : '$'+v;
+      const chartH = 80, barW = 28, gap = 12, totalW = 7*(barW+gap)-gap;
+      return (
+        <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
+          <h3 className="text-slate-400 text-sm mb-3">Daily Sales This Week</h3>
+          <svg width="100%" viewBox={`0 0 ${totalW+10} ${chartH+30}`} style={{overflow:'visible'}}>
+            {barData.map((d, i) => {
+              const x = i*(barW+gap);
+              const barH = d.val != null && d.val > 0 ? Math.max((d.val/maxVal)*chartH, 3) : 0;
+              const y = chartH - barH;
+              const color = d.val == null || d.val === 0 ? '#1e293b' : d.isToday ? neonGreen : 'rgba(34,197,94,0.4)';
+              return (
+                <g key={d.date}>
+                  <rect x={x} y={barH > 0 ? y : 0} width={barW} height={barH > 0 ? barH : chartH} rx="4" fill={color} opacity={barH === 0 ? 0.25 : 1} />
+                  {d.val != null && d.val > 0 && <text x={x+barW/2} y={y-4} textAnchor="middle" fontSize="7" fill={d.isToday ? neonGreen : '#94a3b8'}>{fmtK(d.val)}</text>}
+                  <text x={x+barW/2} y={chartH+14} textAnchor="middle" fontSize="9" fill={d.isToday ? neonGreen : '#64748b'} fontWeight={d.isToday ? 'bold' : 'normal'}>{d.label}</text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      );
+    }
 
-    const ArrowUp = ({ className, style }) => (
-      <svg className={className} style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <line x1="12" y1="19" x2="12" y2="5"></line>
-        <polyline points="5 12 12 5 19 12"></polyline>
-      </svg>
-    );
-
-    const ArrowDown = ({ className, style }) => (
-      <svg className={className} style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <line x1="12" y1="5" x2="12" y2="19"></line>
-        <polyline points="19 12 12 19 5 12"></polyline>
-      </svg>
-    );
-
-    const ChevronRight = ({ className }) => (
-      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <polyline points="9 18 15 12 9 6"></polyline>
-      </svg>
-    );
-
-    const GearIcon = ({ className }) => (
-      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-      </svg>
-    );
-
-    // ── Settings Screen ────────────────────────────────────────────────────────
+    // Settings screen
     function SettingsScreen({ onClose, neonGreen }) {
       const [messages, setMessages] = useState(loadPresets());
       const [newMessage, setNewMessage] = useState('');
       const [editingIdx, setEditingIdx] = useState(null);
       const [editText, setEditText] = useState('');
-
-      const save = (updated) => {
-        setMessages(updated);
-        savePresets(updated);
-      };
-
-      const addMessage = () => {
-        if (!newMessage.trim()) return;
-        save([...messages, newMessage.trim()]);
-        setNewMessage('');
-      };
-
-      const deleteMessage = (i) => save(messages.filter((_, idx) => idx !== i));
-
-      const startEdit = (i) => { setEditingIdx(i); setEditText(messages[i]); };
-
-      const saveEdit = () => {
-        if (!editText.trim()) return;
-        const updated = [...messages];
-        updated[editingIdx] = editText.trim();
-        save(updated);
-        setEditingIdx(null);
-      };
-
-      const resetDefaults = () => { save(DEFAULT_PRESETS); };
-
+      const save = u => { setMessages(u); savePresets(u); };
       return (
         <div className="min-h-screen bg-slate-950 text-white p-4">
           <div className="flex justify-between items-center mb-6">
-            <button onClick={onClose} style={{ color: neonGreen }}>← Back</button>
+            <button onClick={onClose} style={{color:neonGreen}}>← Back</button>
             <h2 className="font-bold text-lg">Preset Messages</h2>
-            <button onClick={resetDefaults} className="text-xs text-slate-500">Reset</button>
+            <button onClick={() => save(DEFAULT_PRESETS)} className="text-xs text-slate-500">Reset</button>
           </div>
-
-          <p className="text-xs text-slate-500 mb-3">Tap a message to edit. These appear in the Send Encouragement modal.</p>
-
+          <p className="text-xs text-slate-500 mb-3">Tap a message to edit. Saves to this device automatically.</p>
           <div className="space-y-2 mb-6">
             {messages.map((msg, i) => (
               <div key={i} className="bg-slate-900 rounded-lg border border-slate-800">
                 {editingIdx === i ? (
                   <div className="p-3">
-                    <textarea
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      className="w-full bg-slate-950 border border-green-500 rounded p-2 text-sm text-white focus:outline-none h-16 resize-none mb-2"
-                    />
+                    <textarea value={editText} onChange={e => setEditText(e.target.value)} className="w-full bg-slate-950 border border-green-500 rounded p-2 text-sm text-white h-16 resize-none mb-2" />
                     <div className="flex gap-2">
-                      <button onClick={saveEdit} className="px-4 py-1 rounded text-sm font-medium text-slate-950" style={{ backgroundColor: neonGreen }}>Save</button>
+                      <button onClick={() => { const u=[...messages]; u[i]=editText.trim(); save(u); setEditingIdx(null); }} className="px-4 py-1 rounded text-sm font-medium text-slate-950" style={{backgroundColor:neonGreen}}>Save</button>
                       <button onClick={() => setEditingIdx(null)} className="px-4 py-1 rounded text-sm border border-slate-600 text-slate-300">Cancel</button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center p-3 gap-3">
-                    <button onClick={() => startEdit(i)} className="flex-1 text-left text-sm text-slate-300">{msg}</button>
-                    <button onClick={() => deleteMessage(i)} className="text-slate-600 text-lg leading-none flex-shrink-0">✕</button>
+                    <button onClick={() => { setEditingIdx(i); setEditText(messages[i]); }} className="flex-1 text-left text-sm text-slate-300">{msg}</button>
+                    <button onClick={() => save(messages.filter((_,j)=>j!==i))} className="text-slate-600 text-lg">✕</button>
                   </div>
                 )}
               </div>
             ))}
           </div>
-
           <div className="bg-slate-900 rounded-lg border border-slate-800 p-3">
             <p className="text-xs text-slate-500 mb-2">Add new message:</p>
-            <textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a new preset message..."
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:outline-none focus:border-green-500 h-16 resize-none mb-2"
-            />
-            <button
-              onClick={addMessage}
-              className="w-full py-2 rounded text-sm font-medium text-slate-950"
-              style={{ backgroundColor: neonGreen }}
-            >
-              + Add Message
-            </button>
+            <textarea value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a new preset message..." className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white h-16 resize-none mb-2" />
+            <button onClick={() => { if(newMessage.trim()){save([...messages,newMessage.trim()]);setNewMessage('');} }} className="w-full py-2 rounded text-sm font-medium text-slate-950" style={{backgroundColor:neonGreen}}>+ Add Message</button>
           </div>
         </div>
       );
     }
 
-    // ── Text Modal (single store) ──────────────────────────────────────────────
-    function TextModal({ store, onClose, neonGreen }) {
-      const [selectedMessage, setSelectedMessage] = useState('');
-      const [customMessage, setCustomMessage] = useState('');
+    // Text modal — single store with smart message at top
+    function TextModal({ store, allStores, timeframe, metric, onClose, neonGreen }) {
       const presets = loadPresets();
-
-      const managerPhone = store['Manager_Cell'] || '';
-      const asmPhone = store['ASM_Cell'] || '';
-      const messageToSend = encodeURIComponent(customMessage || selectedMessage);
+      const smartMsg = buildSmartMessage(store, allStores, timeframe, metric);
+      const [sel, setSel] = useState(smartMsg);
+      const [custom, setCustom] = useState('');
+      const mgr = store['Manager_Cell'] || '';
+      const asm = store['ASM_Cell'] || '';
+      const msg = encodeURIComponent(custom || sel);
 
       return (
         <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
-          <div className="bg-slate-900 rounded-t-2xl w-full p-5 border border-slate-700" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+          <div className="bg-slate-900 rounded-t-2xl w-full p-5 border border-slate-700" style={{maxHeight:'88vh',overflowY:'auto'}}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg" style={{ color: neonGreen }}>Send Encouragement</h3>
-              <button onClick={onClose} className="text-slate-400 text-2xl leading-none">✕</button>
+              <h3 className="font-bold text-lg" style={{color:neonGreen}}>Send to {getCity(store)}</h3>
+              <button onClick={onClose} className="text-slate-400 text-2xl">✕</button>
             </div>
 
-            <p className="text-xs text-slate-500 mb-2">Choose a message:</p>
-            <div className="space-y-2 mb-4">
-              {presets.map((msg, i) => (
-                <button key={i} onClick={() => { setSelectedMessage(msg); setCustomMessage(''); }}
-                  className={'w-full text-left text-sm p-3 rounded border transition-colors ' +
-                    (selectedMessage === msg && !customMessage ? 'border-green-500 bg-green-900/20 text-white' : 'border-slate-700 text-slate-300')}>
-                  {msg}
-                </button>
-              ))}
-            </div>
-
-            <p className="text-xs text-slate-500 mb-2">Or write your own:</p>
-            <textarea value={customMessage} onChange={(e) => { setCustomMessage(e.target.value); setSelectedMessage(''); }}
-              placeholder="Type a custom message..."
-              className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white focus:outline-none focus:border-green-500 h-20 resize-none mb-4" />
-
-            <div className="space-y-2">
-              {managerPhone ? (
-                <a href={`sms:${managerPhone}${messageToSend ? `?body=${messageToSend}` : ''}`}
-                  className="block w-full text-center py-3 rounded font-medium text-slate-950" style={{ backgroundColor: neonGreen }}>
-                  📱 Text Manager
-                </a>
-              ) : <div className="text-xs text-slate-500 text-center py-2">No manager number on file</div>}
-              {asmPhone ? (
-                <a href={`sms:${asmPhone}${messageToSend ? `?body=${messageToSend}` : ''}`}
-                  className="block w-full text-center py-3 rounded font-medium border border-slate-600 text-slate-200">
-                  📱 Text Assistant Manager
-                </a>
-              ) : <div className="text-xs text-slate-500 text-center py-2">No ASM number on file</div>}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ── Text All Managers Modal ────────────────────────────────────────────────
-    function TextAllModal({ stores, timeframe, metric, onClose, neonGreen }) {
-      const presets = loadPresets();
-      const [customMessage, setCustomMessage] = useState('');
-      const [selectedMessage, setSelectedMessage] = useState('');
-
-      const fieldMap = {
-        sales: { today: 'Sales_Today', wtd: 'Sales_WTD', mtd: 'Sales_MTD', ytd: 'Sales_YTD' },
-        gp:    { today: 'GP_Today',    wtd: 'GP_WTD',    mtd: 'GP_MTD',    ytd: 'GP_YTD'    },
-      };
-      const field = fieldMap[metric][timeframe];
-      const timeLabel = { today: 'Today', wtd: 'This Week', mtd: 'This Month', ytd: 'This Year' }[timeframe];
-      const metricLabel = metric === 'sales' ? 'Sales' : 'GP$';
-
-      const sorted = [...stores].sort((a, b) => (b[field] || 0) - (a[field] || 0));
-      const leader = sorted[0];
-      const leaderName = leader ? getAbbrev(leader) : '';
-      const leaderVal = leader ? (leader[field] || 0) : 0;
-      const formatCurrency = (v) => {
-        if (v >= 1000000) return '$' + (v / 1000000).toFixed(2) + 'M';
-        if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'K';
-        return '$' + v.toFixed(0);
-      };
-
-      const autoMessage = `🏆 ${leaderName} is leading in ${metricLabel} ${timeLabel} at ${formatCurrency(leaderVal)}! Great work — let's keep pushing!`;
-
-      const phones = stores
-        .map(s => s['Manager_Cell'])
-        .filter(Boolean)
-        .filter((v, i, a) => a.indexOf(v) === i);
-
-      const messageToSend = encodeURIComponent(customMessage || selectedMessage || autoMessage);
-      const smsHref = phones.length > 0 ? `sms:${phones.join(',')}?body=${messageToSend}` : null;
-
-      return (
-        <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
-          <div className="bg-slate-900 rounded-t-2xl w-full p-5 border border-slate-700" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg" style={{ color: neonGreen }}>Text All Managers</h3>
-              <button onClick={onClose} className="text-slate-400 text-2xl leading-none">✕</button>
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-3 mb-4 border border-slate-700">
-              <p className="text-xs text-slate-400 mb-1">Auto-generated leader message:</p>
-              <button onClick={() => { setSelectedMessage(autoMessage); setCustomMessage(''); }}
-                className={'w-full text-left text-sm p-2 rounded border ' +
-                  (selectedMessage === autoMessage && !customMessage ? 'border-green-500 bg-green-900/20 text-white' : 'border-slate-600 text-slate-300')}>
-                {autoMessage}
+            {/* Smart message at top */}
+            <div className="mb-4">
+              <p className="text-xs text-slate-400 mb-2">📊 Smart standings message:</p>
+              <button onClick={() => { setSel(smartMsg); setCustom(''); }}
+                className={'w-full text-left text-sm p-3 rounded border ' + (sel===smartMsg&&!custom ? 'border-green-500 bg-green-900/20 text-white' : 'border-slate-600 text-slate-300')}>
+                {smartMsg}
               </button>
             </div>
 
             <p className="text-xs text-slate-500 mb-2">Or choose a preset:</p>
             <div className="space-y-2 mb-4">
-              {presets.map((msg, i) => (
-                <button key={i} onClick={() => { setSelectedMessage(msg); setCustomMessage(''); }}
-                  className={'w-full text-left text-sm p-3 rounded border transition-colors ' +
-                    (selectedMessage === msg && !customMessage ? 'border-green-500 bg-green-900/20 text-white' : 'border-slate-700 text-slate-300')}>
-                  {msg}
-                </button>
-              ))}
+              {presets.map((m,i) => <button key={i} onClick={() => {setSel(m);setCustom('');}} className={'w-full text-left text-sm p-3 rounded border '+(sel===m&&!custom?'border-green-500 bg-green-900/20 text-white':'border-slate-700 text-slate-300')}>{m}</button>)}
             </div>
 
             <p className="text-xs text-slate-500 mb-2">Or write your own:</p>
-            <textarea value={customMessage} onChange={(e) => { setCustomMessage(e.target.value); setSelectedMessage(''); }}
-              placeholder="Type a custom message..."
-              className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white focus:outline-none focus:border-green-500 h-20 resize-none mb-4" />
+            <textarea value={custom} onChange={e=>{setCustom(e.target.value);setSel('');}} placeholder="Type a custom message..." className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white h-20 resize-none mb-4" />
 
-            <p className="text-xs text-slate-500 mb-3">{phones.length} manager number{phones.length !== 1 ? 's' : ''} found</p>
-
-            {smsHref ? (
-              <a href={smsHref}
-                className="block w-full text-center py-3 rounded font-medium text-slate-950"
-                style={{ backgroundColor: neonGreen }}>
-                📱 Text All {phones.length} Managers
-              </a>
-            ) : (
-              <div className="text-xs text-slate-500 text-center py-3">No manager numbers on file yet</div>
-            )}
+            <div className="space-y-2">
+              {mgr ? <a href={`sms:${mgr}${msg?`?body=${msg}`:''}`} className="block w-full text-center py-3 rounded font-medium text-slate-950" style={{backgroundColor:neonGreen}}>📱 Text Manager</a> : <div className="text-xs text-slate-500 text-center py-2">No manager number on file</div>}
+              {asm ? <a href={`sms:${asm}${msg?`?body=${msg}`:''}`} className="block w-full text-center py-3 rounded font-medium border border-slate-600 text-slate-200">📱 Text Assistant Manager</a> : <div className="text-xs text-slate-500 text-center py-2">No ASM number on file</div>}
+            </div>
           </div>
         </div>
       );
     }
 
-    // ── Login Screen ───────────────────────────────────────────────────────────
+    // Text All modal
+    function TextAllModal({ stores, timeframe, metric, onClose, neonGreen }) {
+      const presets = loadPresets();
+      const [custom, setCustom] = useState('');
+      const [sel, setSel] = useState('');
+      const field = FIELD_MAP[metric][timeframe].current;
+      const metricLabel = metric==='sales'?'Sales':'GP$';
+      const timeLabel = TIME_LABEL[timeframe];
+      const sorted = [...stores].sort((a,b)=>(b[field]||0)-(a[field]||0));
+      const leader = sorted[0];
+      const leaderCity = leader ? getCity(leader) : '';
+      const leaderVal = leader ? (leader[field]||0) : 0;
+      const autoMsg = `🏆 ${leaderCity} is leading in ${metricLabel} ${timeLabel} at ${fmtCurrency(leaderVal)}! Great work — let's keep pushing!`;
+      const msgToSend = encodeURIComponent(custom || sel || autoMsg);
+      const managerList = stores.filter(s=>s['Manager_Cell']).map(s=>({city:getCity(s),phone:s['Manager_Cell']}));
+
+      return (
+        <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
+          <div className="bg-slate-900 rounded-t-2xl w-full p-5 border border-slate-700" style={{maxHeight:'90vh',overflowY:'auto'}}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-lg" style={{color:neonGreen}}>Text All Managers</h3>
+              <button onClick={onClose} className="text-slate-400 text-2xl">✕</button>
+            </div>
+            <div className="bg-slate-800 rounded-lg p-3 mb-4 border border-slate-700">
+              <p className="text-xs text-slate-400 mb-1">Auto-generated leader message:</p>
+              <button onClick={()=>{setSel(autoMsg);setCustom('');}} className={'w-full text-left text-sm p-2 rounded border '+(sel===autoMsg&&!custom?'border-green-500 bg-green-900/20 text-white':'border-slate-600 text-slate-300')}>{autoMsg}</button>
+            </div>
+            <p className="text-xs text-slate-500 mb-2">Or choose a preset:</p>
+            <div className="space-y-2 mb-4">
+              {presets.map((m,i) => <button key={i} onClick={()=>{setSel(m);setCustom('');}} className={'w-full text-left text-sm p-3 rounded border '+(sel===m&&!custom?'border-green-500 bg-green-900/20 text-white':'border-slate-700 text-slate-300')}>{m}</button>)}
+            </div>
+            <p className="text-xs text-slate-500 mb-2">Or write your own:</p>
+            <textarea value={custom} onChange={e=>{setCustom(e.target.value);setSel('');}} placeholder="Type a custom message..." className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white h-20 resize-none mb-4" />
+            <p className="text-xs text-slate-400 mb-1 font-medium">Tap each manager to send:</p>
+            <p className="text-xs text-slate-500 mb-3">iOS opens one message at a time.</p>
+            <div className="space-y-2">
+              {managerList.length > 0 ? managerList.map((m,i) => (
+                <a key={i} href={`sms:${m.phone}?body=${msgToSend}`} className="flex items-center justify-between w-full py-3 px-4 rounded border border-slate-700 text-slate-200">
+                  <span className="text-sm">{m.city}</span>
+                  <span className="text-xs" style={{color:neonGreen}}>Text →</span>
+                </a>
+              )) : <div className="text-xs text-slate-500 text-center py-3">No manager numbers on file yet</div>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     function LoginScreen({ onLogin, error }) {
       const [password, setPassword] = useState('');
       const neonGreen = '#00FF41';
-
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        onLogin(password);
-      };
-
+      const handleSubmit = e => { e.preventDefault(); onLogin(password); };
       return (
         <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
           <div className="max-w-md w-full">
             <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold mb-2" style={{ color: neonGreen }}>RVP Dashboard</h1>
+              <h1 className="text-3xl font-bold mb-2" style={{color:neonGreen}}>RVP Dashboard</h1>
               <p className="text-slate-400">Enter password to continue</p>
             </div>
             <form onSubmit={handleSubmit} className="bg-slate-900 rounded-lg p-6 border border-slate-800">
               <div className="mb-4">
-                <label htmlFor="password" className="block text-sm text-slate-400 mb-2">Password</label>
-                <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded text-white focus:outline-none focus:border-green-500"
-                  placeholder="Enter password" autoComplete="current-password" autoFocus />
+                <label className="block text-sm text-slate-400 mb-2">Password</label>
+                <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded text-white focus:outline-none focus:border-green-500" placeholder="Enter password" autoComplete="current-password" autoFocus />
               </div>
               {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">{error}</div>}
-              <button type="submit" className="w-full py-3 rounded font-medium transition-colors"
-                style={{ backgroundColor: neonGreen, color: '#0f172a' }}>Login</button>
+              <button type="submit" className="w-full py-3 rounded font-medium" style={{backgroundColor:neonGreen,color:'#0f172a'}}>Login</button>
             </form>
-            <p className="text-center text-xs text-slate-500 mt-4">Password will be saved securely in your device</p>
+            <p className="text-center text-xs text-slate-500 mt-4">Password saved securely on this device</p>
           </div>
         </div>
       );
     }
 
-    // ── Main Dashboard ─────────────────────────────────────────────────────────
     function RVPDashboard() {
+      const [allRecords, setAllRecords] = useState([]);
       const [stores, setStores] = useState([]);
       const [loading, setLoading] = useState(true);
       const [timeframe, setTimeframe] = useState('today');
       const [metric, setMetric] = useState('sales');
       const [selectedStore, setSelectedStore] = useState(null);
-      const [showTextModal, setShowTextModal] = useState(false);
+      const [textStore, setTextStore] = useState(null); // store to text from main list
+      const [showTextModal, setShowTextModal] = useState(false); // inside detail view
       const [showTextAllModal, setShowTextAllModal] = useState(false);
       const [showSettings, setShowSettings] = useState(false);
       const [reportDate, setReportDate] = useState(null);
@@ -350,279 +293,192 @@
       const [isAuthenticated, setIsAuthenticated] = useState(false);
       const [authError, setAuthError] = useState(null);
       const [password, setPassword] = useState(null);
+      const neonGreen = '#00FF41', neonRed = '#FF0055';
 
-      const neonGreen = '#00FF41';
-      const neonRed = '#FF0055';
+      useEffect(() => { const p = localStorage.getItem('rvp-dashboard-password'); if(p){setPassword(p);setIsAuthenticated(true);}else setLoading(false); }, []);
+      useEffect(() => { if(isAuthenticated && password) fetchStoreData(); }, [isAuthenticated, password]);
 
-      const fieldMap = {
-        sales: {
-          today: { current: 'Sales_Today', ly: 'Sales_TodayLY' },
-          wtd:   { current: 'Sales_WTD',   ly: 'Sales_WTDLY'   },
-          mtd:   { current: 'Sales_MTD',   ly: 'Sales_MTDLY'   },
-          ytd:   { current: 'Sales_YTD',   ly: 'Sales_YTDLY'   },
-        },
-        gp: {
-          today: { current: 'GP_Today', ly: 'GP_TodayLY' },
-          wtd:   { current: 'GP_WTD',   ly: 'GP_WTDLY'   },
-          mtd:   { current: 'GP_MTD',   ly: 'GP_MTDLY'   },
-          ytd:   { current: 'GP_YTD',   ly: 'GP_YTDLY'   },
-        }
-      };
-
-      useEffect(() => {
-        const savedPassword = localStorage.getItem('rvp-dashboard-password');
-        if (savedPassword) { setPassword(savedPassword); setIsAuthenticated(true); }
-        else setLoading(false);
-      }, []);
-
-      useEffect(() => {
-        if (isAuthenticated && password) fetchStoreData();
-      }, [isAuthenticated, password]);
-
-      const handleLogin = (pwd) => {
-        setPassword(pwd); setIsAuthenticated(true); setAuthError(null);
-        localStorage.setItem('rvp-dashboard-password', pwd);
-      };
-
-      const handleLogout = () => {
-        setIsAuthenticated(false); setPassword(null); setStores([]);
-        setAuthError(null); localStorage.removeItem('rvp-dashboard-password');
-      };
+      const handleLogin = pwd => { setPassword(pwd); setIsAuthenticated(true); setAuthError(null); localStorage.setItem('rvp-dashboard-password', pwd); };
+      const handleLogout = () => { setIsAuthenticated(false); setPassword(null); setStores([]); setAllRecords([]); setAuthError(null); localStorage.removeItem('rvp-dashboard-password'); };
 
       const fetchStoreData = async () => {
         try {
-          setLoading(true); setError(null); setAuthError(null);
-          const response = await fetch(API_URL, { headers: { 'X-App-Password': password } });
-          if (response.status === 401) { setAuthError('Invalid password. Please try again.'); handleLogout(); return; }
-          if (!response.ok) throw new Error('Failed to fetch data');
-          const data = await response.json();
+          setLoading(true); setError(null);
+          const res = await fetch(API_URL, { headers: {'X-App-Password': password} });
+          if(res.status===401){setAuthError('Invalid password.');handleLogout();return;}
+          if(!res.ok) throw new Error('Failed to fetch data');
+          const data = await res.json();
+          const records = data.records || [];
+          setAllRecords(records);
           const storeMap = {};
-          data.records.forEach(record => {
-            const fields = record.fields;
-            const storeName = fields['Store'];
-            const created = new Date(fields['Created'] || record.createdTime || 0);
-            if (!storeMap[storeName] || new Date(storeMap[storeName].fields['Created'] || storeMap[storeName].createdTime || 0) < created) {
-              storeMap[storeName] = record;
-            }
+          records.forEach(r => {
+            const f = r.fields, name = f['Store'];
+            if(!name) return;
+            const created = new Date(f['Created']||r.createdTime||0);
+            if(!storeMap[name] || new Date(storeMap[name].fields['Created']||storeMap[name].createdTime||0) < created) storeMap[name] = r;
           });
-          const latestStores = Object.values(storeMap).map(record => record.fields);
-          setStores(latestStores);
-          if (latestStores.length > 0) {
-            setReportDate(latestStores[0]['Date']);
-            setCreatedTime(latestStores[0]['Created'] || null);
-          }
+          const latest = Object.values(storeMap).map(r => r.fields);
+          setStores(latest);
+          if(latest.length>0){ setReportDate(latest[0]['Date']); setCreatedTime(latest[0]['Created']||null); }
           setLoading(false);
-        } catch (err) { setError(err.message); setLoading(false); }
+        } catch(err){ setError(err.message); setLoading(false); }
       };
 
-      if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} error={authError} />;
-      if (showSettings) return <SettingsScreen onClose={() => setShowSettings(false)} neonGreen={neonGreen} />;
+      if(!isAuthenticated) return <LoginScreen onLogin={handleLogin} error={authError} />;
+      if(showSettings) return <SettingsScreen onClose={()=>setShowSettings(false)} neonGreen={neonGreen} />;
 
-      const formatCurrency = (value) => {
-        if (!value && value !== 0) return '$0';
-        if (value >= 1000000) return '$' + (value / 1000000).toFixed(2) + 'M';
-        if (value >= 1000) return '$' + (value / 1000).toFixed(1) + 'K';
-        return '$' + value.toFixed(0);
-      };
+      const calcChange = (c,ly) => (!ly||ly===0)?null:((c-ly)/ly)*100;
+      const getCur = s => s[FIELD_MAP[metric][timeframe].current]||0;
+      const getLY  = s => s[FIELD_MAP[metric][timeframe].ly]||0;
+      const totalCur = stores.reduce((a,s)=>a+(getCur(s)||0),0);
+      const totalLY  = stores.reduce((a,s)=>a+(getLY(s)||0),0);
+      const totalChange = calcChange(totalCur, totalLY);
 
-      const calculateChange = (current, lastYear) => {
-        if (!lastYear || lastYear === 0) return null;
-        return ((current - lastYear) / lastYear) * 100;
-      };
+      const ChangeLabel = ({current,ly}) => { const c=calcChange(current,ly); if(c===null)return<span className="text-xs text-slate-500">No LY</span>; return<span className="text-xs font-mono" style={{color:c>=0?neonGreen:neonRed}}>{c>=0?'+':''}{c.toFixed(1)}%</span>; };
+      const MetricBlock = ({label,currentField,lyField,store}) => (<div><div className="text-xs text-slate-500">{label}</div><div className="text-lg font-mono">{fmtCurrency(store[currentField])}</div><ChangeLabel current={store[currentField]} ly={store[lyField]} /></div>);
 
-      const getCurrentValue = (store) => store[fieldMap[metric][timeframe].current] || 0;
-      const getLastYearValue = (store) => store[fieldMap[metric][timeframe].ly] || 0;
-      const getTotalValue = () => stores.reduce((sum, s) => sum + (getCurrentValue(s) || 0), 0);
-      const getTotalLYValue = () => stores.reduce((sum, s) => sum + (getLastYearValue(s) || 0), 0);
-      const totalChange = calculateChange(getTotalValue(), getTotalLYValue());
+      const ArrowUp = ({className,style}) => <svg className={className} style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>;
+      const ArrowDown = ({className,style}) => <svg className={className} style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>;
+      const GearIcon = ({className}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
 
-      const ChangeLabel = ({ current, ly }) => {
-        const change = calculateChange(current, ly);
-        if (change === null) return <span className="text-xs text-slate-500">No LY data</span>;
-        return <span className="text-xs font-mono" style={{ color: change >= 0 ? neonGreen : neonRed }}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</span>;
-      };
+      if(loading) return <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center"><div className="text-lg">Loading dashboard...</div></div>;
+      if(error) return <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4"><div className="text-center"><div className="text-4xl mb-4">⚠️</div><div className="text-xl mb-2">Error Loading Data</div><div className="text-sm text-slate-400 mb-4">{error}</div><div className="flex gap-3 justify-center"><button onClick={fetchStoreData} className="px-6 py-2 bg-green-500 rounded">Retry</button><button onClick={handleLogout} className="px-6 py-2 bg-slate-700 rounded">Logout</button></div></div></div>;
+      if(stores.length===0) return <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4"><div className="text-center"><div className="text-4xl mb-4">📊</div><div className="text-xl mb-2">No Data Available</div><div className="text-sm text-slate-400 mb-4">Waiting for daily sales data</div><button onClick={handleLogout} className="px-6 py-2 bg-slate-700 rounded">Logout</button></div></div>;
 
-      const MetricBlock = ({ label, currentField, lyField, store }) => (
-        <div>
-          <div className="text-xs text-slate-500">{label}</div>
-          <div className="text-lg font-mono">{formatCurrency(store[currentField])}</div>
-          <ChangeLabel current={store[currentField]} ly={store[lyField]} />
-        </div>
-      );
-
-      if (loading) return <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center"><div className="text-lg">Loading dashboard...</div></div>;
-
-      if (error) return (
-        <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
-          <div className="text-center">
-            <div className="text-4xl mb-4">⚠️</div>
-            <div className="text-xl mb-2">Error Loading Data</div>
-            <div className="text-sm text-slate-400 mb-4">{error}</div>
-            <div className="flex gap-3 justify-center">
-              <button onClick={fetchStoreData} className="px-6 py-2 bg-green-500 hover:bg-green-600 rounded">Retry</button>
-              <button onClick={handleLogout} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded">Logout</button>
-            </div>
-          </div>
-        </div>
-      );
-
-      if (stores.length === 0) return (
-        <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
-          <div className="text-center">
-            <div className="text-4xl mb-4">📊</div>
-            <div className="text-xl mb-2">No Data Available</div>
-            <div className="text-sm text-slate-400 mb-4">Waiting for daily sales data</div>
-            <button onClick={handleLogout} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded">Logout</button>
-          </div>
-        </div>
-      );
-
-      // ── Store Detail View ────────────────────────────────────────────────────
-      if (selectedStore) {
+      // Store detail view
+      if(selectedStore) {
         const s = selectedStore;
         return (
           <div className="min-h-screen bg-slate-950 text-white p-4">
-            {showTextModal && <TextModal store={s} onClose={() => setShowTextModal(false)} neonGreen={neonGreen} />}
+            {showTextModal && <TextModal store={s} allStores={stores} timeframe={timeframe} metric={metric} onClose={()=>setShowTextModal(false)} neonGreen={neonGreen} />}
             <div className="flex justify-between items-center mb-4">
-              <button onClick={() => setSelectedStore(null)} style={{ color: neonGreen }}>← Back</button>
+              <button onClick={()=>setSelectedStore(null)} style={{color:neonGreen}}>← Back</button>
               <button onClick={handleLogout} className="text-xs text-slate-500">Logout</button>
             </div>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold" style={{ color: neonGreen }}>{getAbbrev(s)}</h2>
+              <h2 className="text-2xl font-bold" style={{color:neonGreen}}>{getAbbrev(s)}</h2>
               <p className="text-sm text-slate-400">{s['Store']}</p>
               <p className="text-xs text-slate-500 mt-1">{s['Date']}</p>
             </div>
-            <button onClick={() => setShowTextModal(true)}
-              className="w-full mb-4 py-3 rounded font-medium text-slate-950 flex items-center justify-center gap-2"
-              style={{ backgroundColor: neonGreen }}>
-              💬 Send Encouragement
-            </button>
+            <button onClick={()=>setShowTextModal(true)} className="w-full mb-4 py-3 rounded font-medium text-slate-950 flex items-center justify-center gap-2" style={{backgroundColor:neonGreen}}>💬 Send Encouragement</button>
             <div className="space-y-4">
               <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
                 <h3 className="text-slate-400 text-sm mb-3">Sales</h3>
                 <div className="grid grid-cols-4 gap-3">
                   <MetricBlock label="Today" currentField="Sales_Today" lyField="Sales_TodayLY" store={s} />
-                  <MetricBlock label="WTD"   currentField="Sales_WTD"   lyField="Sales_WTDLY"   store={s} />
-                  <MetricBlock label="MTD"   currentField="Sales_MTD"   lyField="Sales_MTDLY"   store={s} />
-                  <MetricBlock label="YTD"   currentField="Sales_YTD"   lyField="Sales_YTDLY"   store={s} />
+                  <MetricBlock label="WTD" currentField="Sales_WTD" lyField="Sales_WTDLY" store={s} />
+                  <MetricBlock label="MTD" currentField="Sales_MTD" lyField="Sales_MTDLY" store={s} />
+                  <MetricBlock label="YTD" currentField="Sales_YTD" lyField="Sales_YTDLY" store={s} />
                 </div>
               </div>
               <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
                 <h3 className="text-slate-400 text-sm mb-3">GP Dollars</h3>
                 <div className="grid grid-cols-4 gap-3">
                   <MetricBlock label="Today" currentField="GP_Today" lyField="GP_TodayLY" store={s} />
-                  <MetricBlock label="WTD"   currentField="GP_WTD"   lyField="GP_WTDLY"   store={s} />
-                  <MetricBlock label="MTD"   currentField="GP_MTD"   lyField="GP_MTDLY"   store={s} />
-                  <MetricBlock label="YTD"   currentField="GP_YTD"   lyField="GP_YTDLY"   store={s} />
+                  <MetricBlock label="WTD" currentField="GP_WTD" lyField="GP_WTDLY" store={s} />
+                  <MetricBlock label="MTD" currentField="GP_MTD" lyField="GP_MTDLY" store={s} />
+                  <MetricBlock label="YTD" currentField="GP_YTD" lyField="GP_YTDLY" store={s} />
                 </div>
               </div>
               <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
                 <h3 className="text-slate-400 text-sm mb-3">GP %</h3>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-slate-500">YTD</span>
-                  <span className="text-2xl font-mono font-bold" style={{ color: neonGreen }}>
-                    {s['GP%_YTD'] != null ? (s['GP%_YTD'] * 100).toFixed(1) + '%' : '—'}
+                  <span className="text-2xl font-mono font-bold" style={{color:neonGreen}}>
+                    {s['GP%_YTD'] != null ? (s['GP%_YTD']*100).toFixed(1)+'%' : '—'}
                   </span>
                 </div>
               </div>
+              <WeeklyChart storeName={s['Store']} allRecords={allRecords} neonGreen={neonGreen} />
             </div>
           </div>
         );
       }
 
-      // ── Main Overview ────────────────────────────────────────────────────────
+      // Main overview
+      const sortedStores = [...stores].sort((a,b)=>getCur(b)-getCur(a));
       return (
         <div className="min-h-screen bg-slate-950 text-white p-4">
-          {showTextAllModal && <TextAllModal stores={stores} timeframe={timeframe} metric={metric} onClose={() => setShowTextAllModal(false)} neonGreen={neonGreen} />}
+          {textStore && <TextModal store={textStore} allStores={stores} timeframe={timeframe} metric={metric} onClose={()=>setTextStore(null)} neonGreen={neonGreen} />}
+          {showTextAllModal && <TextAllModal stores={stores} timeframe={timeframe} metric={metric} onClose={()=>setShowTextAllModal(false)} neonGreen={neonGreen} />}
 
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h1 className="text-2xl font-bold mb-1" style={{ color: neonGreen }}>RVP Dashboard</h1>
-              <p className="text-sm text-slate-400">{reportDate || 'Loading...'}</p>
-              {createdTime && (
-                <p className="text-xs text-slate-500">Updated {new Date(createdTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-              )}
+              <h1 className="text-2xl font-bold mb-1" style={{color:neonGreen}}>RVP Dashboard</h1>
+              <p className="text-sm text-slate-400">{reportDate||'Loading...'}</p>
+              {createdTime && <p className="text-xs text-slate-500">Updated {new Date(createdTime).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</p>}
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setShowSettings(true)} className="text-slate-500 hover:text-slate-300">
-                <GearIcon className="w-5 h-5" />
-              </button>
-              <button onClick={handleLogout} className="text-xs text-slate-500 hover:text-slate-300">Logout</button>
+              <button onClick={()=>setShowSettings(true)} className="text-slate-500"><GearIcon className="w-5 h-5" /></button>
+              <button onClick={handleLogout} className="text-xs text-slate-500">Logout</button>
             </div>
           </div>
 
-          {/* Total Banner */}
           <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
-            <div className="text-sm text-slate-400 mb-1">Total {metric === 'sales' ? 'Sales' : 'GP$'} — {timeframe.toUpperCase()}</div>
-            <div className="text-3xl font-mono font-bold mb-1" style={{ color: neonGreen }}>{formatCurrency(getTotalValue())}</div>
+            <div className="text-sm text-slate-400 mb-1">Total {metric==='sales'?'Sales':'GP$'} — {timeframe.toUpperCase()}</div>
+            <div className="text-3xl font-mono font-bold mb-1" style={{color:neonGreen}}>{fmtCurrency(totalCur)}</div>
             {totalChange !== null && (
               <div className="flex items-center gap-2">
-                {totalChange >= 0 ? <ArrowUp className="w-4 h-4" style={{ color: neonGreen }} /> : <ArrowDown className="w-4 h-4" style={{ color: neonRed }} />}
-                <span className="text-sm font-mono" style={{ color: totalChange >= 0 ? neonGreen : neonRed }}>{totalChange.toFixed(1)}% vs LY</span>
+                {totalChange>=0?<ArrowUp className="w-4 h-4" style={{color:neonGreen}}/>:<ArrowDown className="w-4 h-4" style={{color:neonRed}}/>}
+                <span className="text-sm font-mono" style={{color:totalChange>=0?neonGreen:neonRed}}>{totalChange.toFixed(1)}% vs LY</span>
               </div>
             )}
           </div>
 
-          {/* Controls */}
           <div className="flex gap-3 mb-6">
             <div className="flex-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
               <div className="grid grid-cols-4 gap-1">
-                {[{ value: 'today', label: 'Today' }, { value: 'wtd', label: 'WTD' }, { value: 'mtd', label: 'MTD' }, { value: 'ytd', label: 'YTD' }].map((tf) => (
-                  <button key={tf.value} onClick={() => setTimeframe(tf.value)}
-                    className={'py-2 px-2 rounded text-xs font-medium transition-colors ' + (timeframe === tf.value ? 'text-slate-950' : 'text-slate-400')}
-                    style={timeframe === tf.value ? { backgroundColor: neonGreen } : {}}>
-                    {tf.label}
-                  </button>
+                {[{value:'today',label:'Today'},{value:'wtd',label:'WTD'},{value:'mtd',label:'MTD'},{value:'ytd',label:'YTD'}].map(tf=>(
+                  <button key={tf.value} onClick={()=>setTimeframe(tf.value)} className={'py-2 px-2 rounded text-xs font-medium '+(timeframe===tf.value?'text-slate-950':'text-slate-400')} style={timeframe===tf.value?{backgroundColor:neonGreen}:{}}>{tf.label}</button>
                 ))}
               </div>
             </div>
             <div className="bg-slate-900 rounded-lg p-1 border border-slate-800">
               <div className="grid grid-cols-2 gap-1">
-                {[{ value: 'sales', label: 'Sales' }, { value: 'gp', label: 'GP$' }].map((m) => (
-                  <button key={m.value} onClick={() => setMetric(m.value)}
-                    className={'py-2 px-3 rounded text-xs font-medium transition-colors ' + (metric === m.value ? 'text-slate-950' : 'text-slate-400')}
-                    style={metric === m.value ? { backgroundColor: neonGreen } : {}}>
-                    {m.label}
-                  </button>
+                {[{value:'sales',label:'Sales'},{value:'gp',label:'GP$'}].map(m=>(
+                  <button key={m.value} onClick={()=>setMetric(m.value)} className={'py-2 px-3 rounded text-xs font-medium '+(metric===m.value?'text-slate-950':'text-slate-400')} style={metric===m.value?{backgroundColor:neonGreen}:{}}>{m.label}</button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Store List */}
+          {/* Store list — abbrev pill = text, row = detail */}
           <div className="space-y-2 mb-4">
-            {[...stores].sort((a, b) => getCurrentValue(b) - getCurrentValue(a)).map((store) => {
-              const currentValue = getCurrentValue(store);
-              const lastYearValue = getLastYearValue(store);
-              const change = calculateChange(currentValue, lastYearValue);
+            {sortedStores.map(store => {
+              const cur=getCur(store), ly=getLY(store), change=calcChange(cur,ly);
               return (
-                <button key={store['Store']} onClick={() => setSelectedStore(store)}
-                  className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg p-4 border border-slate-800 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="text-left">
-                        <div className="font-mono font-bold" style={{ color: neonGreen }}>{getAbbrev(store)}</div>
-                        <div className="text-xs text-slate-500">{store['Store']}</div>
-                      </div>
+                <div key={store['Store']} className="w-full bg-slate-900 rounded-lg border border-slate-800 flex items-center overflow-hidden">
+                  {/* Abbrev pill — tapping opens text modal */}
+                  <button
+                    onClick={e => { e.stopPropagation(); setTextStore(store); }}
+                    className="flex-shrink-0 flex items-center justify-center px-3 h-full min-h-14 border-r border-slate-700"
+                    style={{minWidth:'52px'}}
+                    title="Tap to text manager"
+                  >
+                    <span className="text-xs font-bold px-2 py-1 rounded" style={{backgroundColor:'rgba(0,255,65,0.15)',color:neonGreen}}>
+                      {getAbbrev(store)}
+                    </span>
+                  </button>
+
+                  {/* Rest of row — tapping opens detail */}
+                  <button onClick={()=>setSelectedStore(store)} className="flex-1 flex items-center justify-between p-4 text-left">
+                    <div>
+                      <div className="text-xs text-slate-500">{store['Store']}</div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <div className="font-mono text-lg">{formatCurrency(currentValue)}</div>
-                        {change !== null ? (
-                          <div className="text-xs font-mono" style={{ color: change >= 0 ? neonGreen : neonRed }}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</div>
-                        ) : <div className="text-xs text-slate-600">No LY</div>}
+                        <div className="font-mono text-lg">{fmtCurrency(cur)}</div>
+                        {change!==null?<div className="text-xs font-mono" style={{color:change>=0?neonGreen:neonRed}}>{change>=0?'+':''}{change.toFixed(1)}%</div>:<div className="text-xs text-slate-600">No LY</div>}
                       </div>
-                      <ChevronRight className="w-5 h-5 text-slate-600" />
+                      <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               );
             })}
           </div>
 
-          {/* Text All Managers Button */}
-          <button onClick={() => setShowTextAllModal(true)}
-            className="w-full py-3 rounded font-medium border border-slate-600 text-slate-200 flex items-center justify-center gap-2 mb-6">
+          <button onClick={()=>setShowTextAllModal(true)} className="w-full py-3 rounded font-medium border border-slate-600 text-slate-200 flex items-center justify-center gap-2 mb-6">
             📣 Text All Managers
           </button>
         </div>
