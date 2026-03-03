@@ -4,21 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RVP Dashboard</title>
+
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
-  <!-- iPhone Home Screen Icon -->
-  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png" />
+  <!-- Favicon / iOS icons (use ./ for GitHub Pages project sites) -->
+  <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png" />
 </head>
 <body>
   <div id="root"></div>
 
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
+
     const API_URL = "https://tight-waterfall-1040.mathudcarter.workers.dev/api/stores";
 
     const DEFAULT_PRESETS = [
@@ -36,7 +36,7 @@
       "That’s a bold strategy, Cotton. Do it again tomorrow? 🙌",
     ];
 
-    const STORAGE_KEY = 'rvp-preset-messages';
+    const STORAGE_KEY = "rvp-preset-messages";
     const loadPresets = () => {
       try {
         const s = localStorage.getItem(STORAGE_KEY);
@@ -48,106 +48,138 @@
     const savePresets = (msgs) => localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
 
     const getCity = (store) => {
-      if (!store['Store']) return '?';
-      return store['Store'].replace('Home Outlet', '').trim();
+      if (!store["Store"]) return "?";
+      return store["Store"].replace("Home Outlet", "").trim();
     };
     const getAbbrev = (store) => {
-      if (store['Store Abbrev']) return store['Store Abbrev'];
-      return getCity(store).split(' ')[0];
+      if (store["Store Abbrev"]) return store["Store Abbrev"];
+      return getCity(store).split(" ")[0];
     };
 
-    const fmtCurrency = v => {
-      if (!v && v !== 0) return '$0';
-      if (v >= 1000000) return '$' + (v / 1000000).toFixed(2) + 'M';
-      if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'K';
-      return '$' + Number(v).toFixed(0);
+    const fmtCurrency = (v) => {
+      if (v === null || v === undefined) return "$0";
+      const n = Number(v) || 0;
+      if (n >= 1000000) return "$" + (n / 1000000).toFixed(2) + "M";
+      if (n >= 1000) return "$" + (n / 1000).toFixed(1) + "K";
+      return "$" + n.toFixed(0);
     };
 
     const FIELD_MAP = {
-      sales: { today:{current:'Sales_Today',ly:'Sales_TodayLY'}, wtd:{current:'Sales_WTD',ly:'Sales_WTDLY'}, mtd:{current:'Sales_MTD',ly:'Sales_MTDLY'}, ytd:{current:'Sales_YTD',ly:'Sales_YTDLY'} },
-      gp:    { today:{current:'GP_Today',ly:'GP_TodayLY'},       wtd:{current:'GP_WTD',ly:'GP_WTDLY'},       mtd:{current:'GP_MTD',ly:'GP_MTDLY'},       ytd:{current:'GP_YTD',ly:'GP_YTDLY'} }
+      sales: {
+        today: { current: "Sales_Today", ly: "Sales_TodayLY" },
+        wtd: { current: "Sales_WTD", ly: "Sales_WTDLY" },
+        mtd: { current: "Sales_MTD", ly: "Sales_MTDLY" },
+        ytd: { current: "Sales_YTD", ly: "Sales_YTDLY" },
+      },
+      gp: {
+        today: { current: "GP_Today", ly: "GP_TodayLY" },
+        wtd: { current: "GP_WTD", ly: "GP_WTDLY" },
+        mtd: { current: "GP_MTD", ly: "GP_MTDLY" },
+        ytd: { current: "GP_YTD", ly: "GP_YTDLY" },
+      },
     };
-    const TIME_LABEL = { today:'Today', wtd:'This Week', mtd:'This Month', ytd:'This Year' };
+
+    const TIME_LABEL = { today: "Today", wtd: "This Week", mtd: "This Month", ytd: "This Year" };
 
     // Generate smart contextual message for a store
     const buildSmartMessage = (store, allStores, timeframe, metric) => {
       const field = FIELD_MAP[metric][timeframe].current;
-      const metricLabel = metric === 'sales' ? 'Sales' : 'GP$';
+      const metricLabel = metric === "sales" ? "Sales" : "GP$";
       const timeLabel = TIME_LABEL[timeframe];
       const city = getCity(store);
       const myVal = store[field] || 0;
 
       const sorted = [...allStores].sort((a, b) => (b[field] || 0) - (a[field] || 0));
-      const myRank = sorted.findIndex(s => s['Store'] === store['Store']) + 1;
+      const myRank = sorted.findIndex((s) => s["Store"] === store["Store"]) + 1;
       const total = sorted.length;
 
       if (myRank === 1) {
         return `🏆 ${city} is leading the pack in ${metricLabel} ${timeLabel} at ${fmtCurrency(myVal)}!🔥`;
       }
 
-      const ahead = sorted[myRank - 2]; // store directly ahead
+      const ahead = sorted[myRank - 2];
       const aheadCity = getCity(ahead);
       const aheadVal = ahead[field] || 0;
       const diff = fmtCurrency(aheadVal - myVal);
 
-      const suffix = myRank === total ? '(last place)' : `(#${myRank} of ${total})`;
+      const suffix = myRank === total ? "(last place)" : `(#${myRank} of ${total})`;
       return `You're only ${diff} behind ${aheadCity} for #${myRank - 1} in ${metricLabel} ${timeLabel} ${suffix}. You've got this! 💪`;
     };
 
     // Weekly chart
-    const DAY_LABELS = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
+    const DAY_LABELS = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"];
     const getWeekDays = (referenceDate) => {
-      const d = new Date(referenceDate + 'T12:00:00');
+      const d = new Date(referenceDate + "T12:00:00");
       const daysFromSat = (d.getDay() + 1) % 7;
-      const sat = new Date(d); sat.setDate(d.getDate() - daysFromSat);
+      const sat = new Date(d);
+      sat.setDate(d.getDate() - daysFromSat);
       const days = [];
       for (let i = 0; i < 7; i++) {
         const dd = new Date(sat);
         dd.setDate(sat.getDate() + i);
-        days.push(dd.toISOString().split('T')[0]);
+        days.push(dd.toISOString().split("T")[0]);
       }
       return days;
     };
 
     function WeeklyChart({ storeName, allRecords, neonGreen }) {
-      const storeRecords = allRecords.filter(r => r.fields['Store'] === storeName);
+      const storeRecords = allRecords.filter((r) => r.fields["Store"] === storeName);
       if (storeRecords.length === 0) return null;
 
-      const latestDate = storeRecords.map(r => r.fields['Date']).filter(Boolean).sort().reverse()[0];
+      const latestDate = storeRecords.map((r) => r.fields["Date"]).filter(Boolean).sort().reverse()[0];
       if (!latestDate) return null;
 
       const weekDays = getWeekDays(latestDate);
       const barData = weekDays.map((date, idx) => {
         const dayRecs = storeRecords
-          .filter(r => r.fields['Date'] === date)
-          .sort((a,b) => new Date(b.fields['Created']||b.createdTime||0) - new Date(a.fields['Created']||a.createdTime||0));
-        const val = dayRecs.length > 0 ? (dayRecs[0].fields['Sales_Today'] || 0) : null;
+          .filter((r) => r.fields["Date"] === date)
+          .sort((a, b) => new Date(b.fields["Created"] || b.createdTime || 0) - new Date(a.fields["Created"] || a.createdTime || 0));
+        const val = dayRecs.length > 0 ? dayRecs[0].fields["Sales_Today"] || 0 : null;
         return { date, val, label: DAY_LABELS[idx], isToday: date === latestDate };
       });
 
-      const maxVal = Math.max(...barData.map(d => d.val || 0), 1);
-      const fmtK = v => v >= 1000000 ? '$'+(v/1000000).toFixed(1)+'M' : v >= 1000 ? '$'+(v/1000).toFixed(0)+'K' : '$'+v;
+      const maxVal = Math.max(...barData.map((d) => d.val || 0), 1);
+      const fmtK = (v) =>
+        v >= 1000000 ? "$" + (v / 1000000).toFixed(1) + "M" : v >= 1000 ? "$" + (v / 1000).toFixed(0) + "K" : "$" + v;
 
-      const chartH = 80, barW = 28, gap = 12, totalW = 7*(barW+gap)-gap;
+      const chartH = 80,
+        barW = 28,
+        gap = 12,
+        totalW = 7 * (barW + gap) - gap;
 
       return (
         <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
           <h3 className="text-slate-400 text-sm mb-3">Daily Sales This Week</h3>
-          <svg width="100%" viewBox={`0 0 ${totalW+10} ${chartH+30}`} style={{overflow:'visible'}}>
+          <svg width="100%" viewBox={`0 0 ${totalW + 10} ${chartH + 30}`} style={{ overflow: "visible" }}>
             {barData.map((d, i) => {
-              const x = i*(barW+gap);
-              const barH = d.val != null && d.val > 0 ? Math.max((d.val/maxVal)*chartH, 3) : 0;
+              const x = i * (barW + gap);
+              const barH = d.val != null && d.val > 0 ? Math.max((d.val / maxVal) * chartH, 3) : 0;
               const y = chartH - barH;
-              const color = d.val == null || d.val === 0 ? '#1e293b' : d.isToday ? neonGreen : 'rgba(34,197,94,0.4)';
+              const color = d.val == null || d.val === 0 ? "#1e293b" : d.isToday ? neonGreen : "rgba(34,197,94,0.4)";
               return (
                 <g key={d.date}>
-                  <rect x={x} y={barH > 0 ? y : 0} width={barW} height={barH > 0 ? barH : chartH} rx="4" fill={color} opacity={barH === 0 ? 0.25 : 1} />
+                  <rect
+                    x={x}
+                    y={barH > 0 ? y : 0}
+                    width={barW}
+                    height={barH > 0 ? barH : chartH}
+                    rx="4"
+                    fill={color}
+                    opacity={barH === 0 ? 0.25 : 1}
+                  />
                   {d.val != null && d.val > 0 && (
-                    <text x={x+barW/2} y={y-4} textAnchor="middle" fontSize="7" fill={d.isToday ? neonGreen : '#94a3b8'}>
+                    <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize="7" fill={d.isToday ? neonGreen : "#94a3b8"}>
                       {fmtK(d.val)}
                     </text>
                   )}
-                  <text x={x+barW/2} y={chartH+14} textAnchor="middle" fontSize="9" fill={d.isToday ? neonGreen : '#64748b'} fontWeight={d.isToday ? 'bold' : 'normal'}>
+                  <text
+                    x={x + barW / 2}
+                    y={chartH + 14}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fill={d.isToday ? neonGreen : "#64748b"}
+                    fontWeight={d.isToday ? "bold" : "normal"}
+                  >
                     {d.label}
                   </text>
                 </g>
@@ -158,20 +190,26 @@
       );
     }
 
-    // Settings screen
     function SettingsScreen({ onClose, neonGreen }) {
       const [messages, setMessages] = useState(loadPresets());
-      const [newMessage, setNewMessage] = useState('');
+      const [newMessage, setNewMessage] = useState("");
       const [editingIdx, setEditingIdx] = useState(null);
-      const [editText, setEditText] = useState('');
-      const save = u => { setMessages(u); savePresets(u); };
+      const [editText, setEditText] = useState("");
+      const save = (u) => {
+        setMessages(u);
+        savePresets(u);
+      };
 
       return (
         <div className="min-h-screen bg-slate-950 text-white p-4">
           <div className="flex justify-between items-center mb-6">
-            <button onClick={onClose} style={{color:neonGreen}}>← Back</button>
+            <button onClick={onClose} style={{ color: neonGreen }}>
+              ← Back
+            </button>
             <h2 className="font-bold text-lg">Preset Messages</h2>
-            <button onClick={() => save(DEFAULT_PRESETS)} className="text-xs text-slate-500">Reset</button>
+            <button onClick={() => save(DEFAULT_PRESETS)} className="text-xs text-slate-500">
+              Reset
+            </button>
           </div>
 
           <p className="text-xs text-slate-500 mb-3">Tap a message to edit. Saves to this device automatically.</p>
@@ -183,7 +221,7 @@
                   <div className="p-3">
                     <textarea
                       value={editText}
-                      onChange={e => setEditText(e.target.value)}
+                      onChange={(e) => setEditText(e.target.value)}
                       className="w-full bg-slate-950 border border-green-500 rounded p-2 text-sm text-white h-16 resize-none mb-2"
                     />
                     <div className="flex gap-2">
@@ -195,19 +233,29 @@
                           setEditingIdx(null);
                         }}
                         className="px-4 py-1 rounded text-sm font-medium text-slate-950"
-                        style={{backgroundColor:neonGreen}}
+                        style={{ backgroundColor: neonGreen }}
                       >
                         Save
                       </button>
-                      <button onClick={() => setEditingIdx(null)} className="px-4 py-1 rounded text-sm border border-slate-600 text-slate-300">Cancel</button>
+                      <button onClick={() => setEditingIdx(null)} className="px-4 py-1 rounded text-sm border border-slate-600 text-slate-300">
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center p-3 gap-3">
-                    <button onClick={() => { setEditingIdx(i); setEditText(messages[i]); }} className="flex-1 text-left text-sm text-slate-300">
+                    <button
+                      onClick={() => {
+                        setEditingIdx(i);
+                        setEditText(messages[i]);
+                      }}
+                      className="flex-1 text-left text-sm text-slate-300"
+                    >
                       {msg}
                     </button>
-                    <button onClick={() => save(messages.filter((_,j)=>j!==i))} className="text-slate-600 text-lg">✕</button>
+                    <button onClick={() => save(messages.filter((_, j) => j !== i))} className="text-slate-600 text-lg">
+                      ✕
+                    </button>
                   </div>
                 )}
               </div>
@@ -218,19 +266,19 @@
             <p className="text-xs text-slate-500 mb-2">Add new message:</p>
             <textarea
               value={newMessage}
-              onChange={e => setNewMessage(e.target.value)}
+              onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type a new preset message..."
               className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white h-16 resize-none mb-2"
             />
             <button
               onClick={() => {
-                if(newMessage.trim()){
-                  save([...messages,newMessage.trim()]);
-                  setNewMessage('');
+                if (newMessage.trim()) {
+                  save([...messages, newMessage.trim()]);
+                  setNewMessage("");
                 }
               }}
               className="w-full py-2 rounded text-sm font-medium text-slate-950"
-              style={{backgroundColor:neonGreen}}
+              style={{ backgroundColor: neonGreen }}
             >
               + Add Message
             </button>
@@ -239,29 +287,38 @@
       );
     }
 
-    // Text modal — single store with smart message at top
     function TextModal({ store, allStores, timeframe, metric, onClose, neonGreen }) {
       const presets = loadPresets();
       const smartMsg = buildSmartMessage(store, allStores, timeframe, metric);
       const [sel, setSel] = useState(smartMsg);
-      const [custom, setCustom] = useState('');
-      const mgr = store['Manager_Cell'] || '';
-      const asm = store['ASM_Cell'] || '';
+      const [custom, setCustom] = useState("");
+      const mgr = store["Manager_Cell"] || "";
+      const asm = store["ASM_Cell"] || "";
       const msg = encodeURIComponent(custom || sel);
 
       return (
         <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
-          <div className="bg-slate-900 rounded-t-2xl w-full p-5 border border-slate-700" style={{maxHeight:'88vh',overflowY:'auto'}}>
+          <div className="bg-slate-900 rounded-t-2xl w-full p-5 border border-slate-700" style={{ maxHeight: "88vh", overflowY: "auto" }}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg" style={{color:neonGreen}}>Send to {getCity(store)}</h3>
-              <button onClick={onClose} className="text-slate-400 text-2xl">✕</button>
+              <h3 className="font-bold text-lg" style={{ color: neonGreen }}>
+                Send to {getCity(store)}
+              </h3>
+              <button onClick={onClose} className="text-slate-400 text-2xl">
+                ✕
+              </button>
             </div>
 
             <div className="mb-4">
               <p className="text-xs text-slate-400 mb-2">📊 Smart standings message:</p>
               <button
-                onClick={() => { setSel(smartMsg); setCustom(''); }}
-                className={'w-full text-left text-sm p-3 rounded border ' + (sel===smartMsg&&!custom ? 'border-green-500 bg-green-900/20 text-white' : 'border-slate-600 text-slate-300')}
+                onClick={() => {
+                  setSel(smartMsg);
+                  setCustom("");
+                }}
+                className={
+                  "w-full text-left text-sm p-3 rounded border " +
+                  (sel === smartMsg && !custom ? "border-green-500 bg-green-900/20 text-white" : "border-slate-600 text-slate-300")
+                }
               >
                 {smartMsg}
               </button>
@@ -269,11 +326,17 @@
 
             <p className="text-xs text-slate-500 mb-2">Or choose a preset:</p>
             <div className="space-y-2 mb-4">
-              {presets.map((m,i) => (
+              {presets.map((m, i) => (
                 <button
                   key={i}
-                  onClick={() => {setSel(m);setCustom('');}}
-                  className={'w-full text-left text-sm p-3 rounded border '+(sel===m&&!custom?'border-green-500 bg-green-900/20 text-white':'border-slate-700 text-slate-300')}
+                  onClick={() => {
+                    setSel(m);
+                    setCustom("");
+                  }}
+                  className={
+                    "w-full text-left text-sm p-3 rounded border " +
+                    (sel === m && !custom ? "border-green-500 bg-green-900/20 text-white" : "border-slate-700 text-slate-300")
+                  }
                 >
                   {m}
                 </button>
@@ -283,14 +346,21 @@
             <p className="text-xs text-slate-500 mb-2">Or write your own:</p>
             <textarea
               value={custom}
-              onChange={e=>{setCustom(e.target.value);setSel('');}}
+              onChange={(e) => {
+                setCustom(e.target.value);
+                setSel("");
+              }}
               placeholder="Type a custom message..."
               className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white h-20 resize-none mb-4"
             />
 
             <div className="space-y-2">
               {mgr ? (
-                <a href={`sms:${mgr}${msg?`?body=${msg}`:''}`} className="block w-full text-center py-3 rounded font-medium text-slate-950" style={{backgroundColor:neonGreen}}>
+                <a
+                  href={`sms:${mgr}${msg ? `?body=${msg}` : ""}`}
+                  className="block w-full text-center py-3 rounded font-medium text-slate-950"
+                  style={{ backgroundColor: neonGreen }}
+                >
                   📱 Text Manager
                 </a>
               ) : (
@@ -298,7 +368,7 @@
               )}
 
               {asm ? (
-                <a href={`sms:${asm}${msg?`?body=${msg}`:''}`} className="block w-full text-center py-3 rounded font-medium border border-slate-600 text-slate-200">
+                <a href={`sms:${asm}${msg ? `?body=${msg}` : ""}`} className="block w-full text-center py-3 rounded font-medium border border-slate-600 text-slate-200">
                   📱 Text Assistant Manager
                 </a>
               ) : (
@@ -310,35 +380,47 @@
       );
     }
 
-    // Text All modal
     function TextAllModal({ stores, timeframe, metric, onClose, neonGreen }) {
       const presets = loadPresets();
-      const [custom, setCustom] = useState('');
-      const [sel, setSel] = useState('');
+      const [custom, setCustom] = useState("");
+      const [sel, setSel] = useState("");
       const field = FIELD_MAP[metric][timeframe].current;
-      const metricLabel = metric==='sales'?'Sales':'GP$';
+      const metricLabel = metric === "sales" ? "Sales" : "GP$";
       const timeLabel = TIME_LABEL[timeframe];
-      const sorted = [...stores].sort((a,b)=>(b[field]||0)-(a[field]||0));
+
+      const sorted = [...stores].sort((a, b) => (b[field] || 0) - (a[field] || 0));
       const leader = sorted[0];
-      const leaderCity = leader ? getCity(leader) : '';
-      const leaderVal = leader ? (leader[field]||0) : 0;
+      const leaderCity = leader ? getCity(leader) : "";
+      const leaderVal = leader ? leader[field] || 0 : 0;
+
       const autoMsg = `🏆 ${leaderCity} is leading in ${metricLabel} ${timeLabel} at ${fmtCurrency(leaderVal)}! Great work — let's keep pushing!`;
       const msgToSend = encodeURIComponent(custom || sel || autoMsg);
-      const managerList = stores.filter(s=>s['Manager_Cell']).map(s=>({city:getCity(s),phone:s['Manager_Cell']}));
+
+      const managerList = stores.filter((s) => s["Manager_Cell"]).map((s) => ({ city: getCity(s), phone: s["Manager_Cell"] }));
 
       return (
         <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
-          <div className="bg-slate-900 rounded-t-2xl w-full p-5 border border-slate-700" style={{maxHeight:'90vh',overflowY:'auto'}}>
+          <div className="bg-slate-900 rounded-t-2xl w-full p-5 border border-slate-700" style={{ maxHeight: "90vh", overflowY: "auto" }}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg" style={{color:neonGreen}}>Text All Managers</h3>
-              <button onClick={onClose} className="text-slate-400 text-2xl">✕</button>
+              <h3 className="font-bold text-lg" style={{ color: neonGreen }}>
+                Text All Managers
+              </h3>
+              <button onClick={onClose} className="text-slate-400 text-2xl">
+                ✕
+              </button>
             </div>
 
             <div className="bg-slate-800 rounded-lg p-3 mb-4 border border-slate-700">
               <p className="text-xs text-slate-400 mb-1">Auto-generated leader message:</p>
               <button
-                onClick={()=>{setSel(autoMsg);setCustom('');}}
-                className={'w-full text-left text-sm p-2 rounded border '+(sel===autoMsg&&!custom?'border-green-500 bg-green-900/20 text-white':'border-slate-600 text-slate-300')}
+                onClick={() => {
+                  setSel(autoMsg);
+                  setCustom("");
+                }}
+                className={
+                  "w-full text-left text-sm p-2 rounded border " +
+                  (sel === autoMsg && !custom ? "border-green-500 bg-green-900/20 text-white" : "border-slate-600 text-slate-300")
+                }
               >
                 {autoMsg}
               </button>
@@ -346,11 +428,17 @@
 
             <p className="text-xs text-slate-500 mb-2">Or choose a preset:</p>
             <div className="space-y-2 mb-4">
-              {presets.map((m,i) => (
+              {presets.map((m, i) => (
                 <button
                   key={i}
-                  onClick={()=>{setSel(m);setCustom('');}}
-                  className={'w-full text-left text-sm p-3 rounded border '+(sel===m&&!custom?'border-green-500 bg-green-900/20 text-white':'border-slate-700 text-slate-300')}
+                  onClick={() => {
+                    setSel(m);
+                    setCustom("");
+                  }}
+                  className={
+                    "w-full text-left text-sm p-3 rounded border " +
+                    (sel === m && !custom ? "border-green-500 bg-green-900/20 text-white" : "border-slate-700 text-slate-300")
+                  }
                 >
                   {m}
                 </button>
@@ -360,7 +448,10 @@
             <p className="text-xs text-slate-500 mb-2">Or write your own:</p>
             <textarea
               value={custom}
-              onChange={e=>{setCustom(e.target.value);setSel('');}}
+              onChange={(e) => {
+                setCustom(e.target.value);
+                setSel("");
+              }}
               placeholder="Type a custom message..."
               className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white h-20 resize-none mb-4"
             />
@@ -369,12 +460,20 @@
             <p className="text-xs text-slate-500 mb-3">iOS opens one message at a time.</p>
 
             <div className="space-y-2">
-              {managerList.length > 0 ? managerList.map((m,i) => (
-                <a key={i} href={`sms:${m.phone}?body=${msgToSend}`} className="flex items-center justify-between w-full py-3 px-4 rounded border border-slate-700 text-slate-200">
-                  <span className="text-sm">{m.city}</span>
-                  <span className="text-xs" style={{color:neonGreen}}>Text →</span>
-                </a>
-              )) : (
+              {managerList.length > 0 ? (
+                managerList.map((m, i) => (
+                  <a
+                    key={i}
+                    href={`sms:${m.phone}?body=${msgToSend}`}
+                    className="flex items-center justify-between w-full py-3 px-4 rounded border border-slate-700 text-slate-200"
+                  >
+                    <span className="text-sm">{m.city}</span>
+                    <span className="text-xs" style={{ color: neonGreen }}>
+                      Text →
+                    </span>
+                  </a>
+                ))
+              ) : (
                 <div className="text-xs text-slate-500 text-center py-3">No manager numbers on file yet</div>
               )}
             </div>
@@ -384,15 +483,20 @@
     }
 
     function LoginScreen({ onLogin, error }) {
-      const [password, setPassword] = useState('');
-      const neonGreen = '#00FF41';
-      const handleSubmit = e => { e.preventDefault(); onLogin(password); };
+      const [password, setPassword] = useState("");
+      const neonGreen = "#00FF41";
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onLogin(password);
+      };
 
       return (
         <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
           <div className="max-w-md w-full">
             <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold mb-2" style={{color:neonGreen}}>RVP Dashboard</h1>
+              <h1 className="text-3xl font-bold mb-2" style={{ color: neonGreen }}>
+                RVP Dashboard
+              </h1>
               <p className="text-slate-400">Enter password to continue</p>
             </div>
 
@@ -402,7 +506,7 @@
                 <input
                   type="password"
                   value={password}
-                  onChange={e=>setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded text-white focus:outline-none focus:border-green-500"
                   placeholder="Enter password"
                   autoComplete="current-password"
@@ -412,7 +516,7 @@
 
               {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">{error}</div>}
 
-              <button type="submit" className="w-full py-3 rounded font-medium" style={{backgroundColor:neonGreen,color:'#0f172a'}}>
+              <button type="submit" className="w-full py-3 rounded font-medium" style={{ backgroundColor: neonGreen, color: "#0f172a" }}>
                 Login
               </button>
             </form>
@@ -427,8 +531,8 @@
       const [allRecords, setAllRecords] = useState([]);
       const [stores, setStores] = useState([]);
       const [loading, setLoading] = useState(true);
-      const [timeframe, setTimeframe] = useState('today');
-      const [metric, setMetric] = useState('sales');
+      const [timeframe, setTimeframe] = useState("today");
+      const [metric, setMetric] = useState("sales");
       const [selectedStore, setSelectedStore] = useState(null);
       const [textStore, setTextStore] = useState(null);
       const [showTextModal, setShowTextModal] = useState(false);
@@ -441,21 +545,28 @@
       const [authError, setAuthError] = useState(null);
       const [password, setPassword] = useState(null);
 
-      const neonGreen = '#00FF41', neonRed = '#FF0055';
+      const neonGreen = "#00FF41",
+        neonRed = "#FF0055";
 
       useEffect(() => {
-        const p = localStorage.getItem('rvp-dashboard-password');
-        if (p) { setPassword(p); setIsAuthenticated(true); }
-        else setLoading(false);
+        const p = localStorage.getItem("rvp-dashboard-password");
+        if (p) {
+          setPassword(p);
+          setIsAuthenticated(true);
+        } else {
+          setLoading(false);
+        }
       }, []);
 
-      useEffect(() => { if (isAuthenticated && password) fetchStoreData(); }, [isAuthenticated, password]);
+      useEffect(() => {
+        if (isAuthenticated && password) fetchStoreData();
+      }, [isAuthenticated, password]);
 
-      const handleLogin = pwd => {
+      const handleLogin = (pwd) => {
         setPassword(pwd);
         setIsAuthenticated(true);
         setAuthError(null);
-        localStorage.setItem('rvp-dashboard-password', pwd);
+        localStorage.setItem("rvp-dashboard-password", pwd);
       };
 
       const handleLogout = () => {
@@ -464,36 +575,42 @@
         setStores([]);
         setAllRecords([]);
         setAuthError(null);
-        localStorage.removeItem('rvp-dashboard-password');
+        localStorage.removeItem("rvp-dashboard-password");
       };
 
       const fetchStoreData = async () => {
         try {
-          setLoading(true); setError(null);
-          const res = await fetch(API_URL, { headers: {'X-App-Password': password} });
-          if (res.status === 401) { setAuthError('Invalid password.'); handleLogout(); return; }
-          if (!res.ok) throw new Error('Failed to fetch data');
+          setLoading(true);
+          setError(null);
+          const res = await fetch(API_URL, { headers: { "X-App-Password": password } });
+          if (res.status === 401) {
+            setAuthError("Invalid password.");
+            handleLogout();
+            return;
+          }
+          if (!res.ok) throw new Error("Failed to fetch data");
 
           const data = await res.json();
           const records = data.records || [];
           setAllRecords(records);
 
           const storeMap = {};
-          records.forEach(r => {
-            const f = r.fields, name = f['Store'];
+          records.forEach((r) => {
+            const f = r.fields;
+            const name = f["Store"];
             if (!name) return;
-            const created = new Date(f['Created'] || r.createdTime || 0);
+            const created = new Date(f["Created"] || r.createdTime || 0);
             const prior = storeMap[name];
-            const priorCreated = prior ? new Date(prior.fields['Created'] || prior.createdTime || 0) : null;
-            if (!prior || (priorCreated < created)) storeMap[name] = r;
+            const priorCreated = prior ? new Date(prior.fields["Created"] || prior.createdTime || 0) : null;
+            if (!prior || priorCreated < created) storeMap[name] = r;
           });
 
-          const latest = Object.values(storeMap).map(r => r.fields);
+          const latest = Object.values(storeMap).map((r) => r.fields);
           setStores(latest);
 
           if (latest.length > 0) {
-            setReportDate(latest[0]['Date']);
-            setCreatedTime(latest[0]['Created'] || null);
+            setReportDate(latest[0]["Date"]);
+            setCreatedTime(latest[0]["Created"] || null);
           }
 
           setLoading(false);
@@ -503,19 +620,27 @@
         }
       };
 
-      const calcChange = (c, ly) => (!ly || ly === 0) ? null : ((c - ly) / ly) * 100;
-      const getCur = s => s[FIELD_MAP[metric][timeframe].current] || 0;
-      const getLY  = s => s[FIELD_MAP[metric][timeframe].ly] || 0;
+      const calcChange = (c, ly) => (!ly || ly === 0 ? null : ((c - ly) / ly) * 100);
+      const getCur = (s) => s[FIELD_MAP[metric][timeframe].current] || 0;
+      const getLY = (s) => s[FIELD_MAP[metric][timeframe].ly] || 0;
 
-      // --- Swipe to cycle stores (detail view) ---
+      // One canonical ordering for current metric+timeframe (used by list, swipe, ranking)
+      const orderedStores = [...stores].sort((a, b) => getCur(b) - getCur(a));
+
+      const getRankInfo = (store) => {
+        if (!store) return { rank: null, total: orderedStores.length };
+        const idx = orderedStores.findIndex((s) => s["Store"] === store["Store"]);
+        return { rank: idx >= 0 ? idx + 1 : null, total: orderedStores.length };
+      };
+      const metricLabel = metric === "sales" ? "Sales" : "GP";
+      const tfLabel = timeframe.toUpperCase();
+
+      // Swipe
       const touchStart = useRef({ x: 0, y: 0 });
-
-      // Use the same order as the main list: metric/timeframe sort
-      const orderedStores = [...stores].sort((a, b) => (getCur(b) - getCur(a)));
 
       const getSelectedIndex = () => {
         if (!selectedStore) return -1;
-        return orderedStores.findIndex(s => s['Store'] === selectedStore['Store']);
+        return orderedStores.findIndex((s) => s["Store"] === selectedStore["Store"]);
       };
 
       const selectByOffset = (offset) => {
@@ -539,38 +664,29 @@
         const dx = t.clientX - touchStart.current.x;
         const dy = t.clientY - touchStart.current.y;
 
-        // Require mostly-horizontal swipe
         if (Math.abs(dx) < 60) return;
         if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
 
-        if (dx < 0) selectByOffset(+1); // left -> next
-        else selectByOffset(-1);        // right -> prev
+        if (dx < 0) selectByOffset(+1);
+        else selectByOffset(-1);
       };
-      // --- end swipe ---
 
-      const totalCur = stores.reduce((a,s)=>a+(getCur(s)||0),0);
-      const totalLY  = stores.reduce((a,s)=>a+(getLY(s)||0),0);
-      // --- Rank helpers (based on current metric + timeframe) ---
-      const rankField = FIELD_MAP[metric][timeframe].current;
-      const rankedStores = [...stores].sort((a, b) => (getCur(b) - getCur(a)));
-
-      const getRankInfo = (store) => {
-        if (!store) return { rank: null, total: rankedStores.length };
-      const idx = rankedStores.findIndex(s => s['Store'] === store['Store']);
-      return { rank: idx >= 0 ? idx + 1 : null, total: rankedStores.length };
-    };
-
-      const metricLabel = metric === 'sales' ? 'Sales' : 'GP';
-      const tfLabel = timeframe.toUpperCase();
+      const totalCur = stores.reduce((a, s) => a + (getCur(s) || 0), 0);
+      const totalLY = stores.reduce((a, s) => a + (getLY(s) || 0), 0);
       const totalChange = calcChange(totalCur, totalLY);
 
-      const ChangeLabel = ({current,ly}) => {
-        const c = calcChange(current,ly);
+      const ChangeLabel = ({ current, ly }) => {
+        const c = calcChange(current, ly);
         if (c === null) return <span className="text-xs text-slate-500">No LY</span>;
-        return <span className="text-xs font-mono" style={{color:c>=0?neonGreen:neonRed}}>{c>=0?'+':''}{c.toFixed(1)}%</span>;
+        return (
+          <span className="text-xs font-mono" style={{ color: c >= 0 ? neonGreen : neonRed }}>
+            {c >= 0 ? "+" : ""}
+            {c.toFixed(1)}%
+          </span>
+        );
       };
 
-      const MetricBlock = ({label,currentField,lyField,store}) => (
+      const MetricBlock = ({ label, currentField, lyField, store }) => (
         <div>
           <div className="text-xs text-slate-500">{label}</div>
           <div className="text-lg font-mono">{fmtCurrency(store[currentField])}</div>
@@ -578,31 +694,38 @@
         </div>
       );
 
-      const ArrowUp = ({className,style}) => (
+      const ArrowUp = ({ className, style }) => (
         <svg className={className} style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <line x1="12" y1="19" x2="12" y2="5"/>
-          <polyline points="5 12 12 5 19 12"/>
+          <line x1="12" y1="19" x2="12" y2="5" />
+          <polyline points="5 12 12 5 19 12" />
         </svg>
       );
-      const ArrowDown = ({className,style}) => (
+
+      const ArrowDown = ({ className, style }) => (
         <svg className={className} style={style} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <polyline points="19 12 12 19 5 12"/>
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <polyline points="19 12 12 19 5 12" />
         </svg>
       );
-      const GearIcon = ({className}) => (
+
+      const GearIcon = ({ className }) => (
         <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       );
 
       if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} error={authError} />;
-      if (showSettings) return <SettingsScreen onClose={()=>setShowSettings(false)} neonGreen={neonGreen} />;
+      if (showSettings) return <SettingsScreen onClose={() => setShowSettings(false)} neonGreen={neonGreen} />;
 
       if (loading) {
-        return <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center"><div className="text-lg">Loading dashboard...</div></div>;
+        return (
+          <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+            <div className="text-lg">Loading dashboard...</div>
+          </div>
+        );
       }
+
       if (error) {
         return (
           <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
@@ -611,13 +734,18 @@
               <div className="text-xl mb-2">Error Loading Data</div>
               <div className="text-sm text-slate-400 mb-4">{error}</div>
               <div className="flex gap-3 justify-center">
-                <button onClick={fetchStoreData} className="px-6 py-2 bg-green-500 rounded">Retry</button>
-                <button onClick={handleLogout} className="px-6 py-2 bg-slate-700 rounded">Logout</button>
+                <button onClick={fetchStoreData} className="px-6 py-2 bg-green-500 rounded">
+                  Retry
+                </button>
+                <button onClick={handleLogout} className="px-6 py-2 bg-slate-700 rounded">
+                  Logout
+                </button>
               </div>
             </div>
           </div>
         );
       }
+
       if (stores.length === 0) {
         return (
           <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
@@ -625,111 +753,103 @@
               <div className="text-4xl mb-4">📊</div>
               <div className="text-xl mb-2">No Data Available</div>
               <div className="text-sm text-slate-400 mb-4">Waiting for daily sales data</div>
-              <button onClick={handleLogout} className="px-6 py-2 bg-slate-700 rounded">Logout</button>
+              <button onClick={handleLogout} className="px-6 py-2 bg-slate-700 rounded">
+                Logout
+              </button>
             </div>
           </div>
         );
       }
 
-// Store detail view (with swipe handlers)
-if (selectedStore) {
-  const s = selectedStore;
+      // Detail view (swipe + rank badge)
+      if (selectedStore) {
+        const s = selectedStore;
+        const { rank, total } = getRankInfo(s);
+        const rankLine = rank ? `#${rank} ${metricLabel} ${tfLabel}` : `${metricLabel} ${tfLabel}`;
 
-  return (
-    <div
-      className="min-h-screen bg-slate-950 text-white p-4"
-      onTouchStart={onDetailTouchStart}
-      onTouchEnd={onDetailTouchEnd}
-    >
-      {showTextModal && (
-        <TextModal
-          store={s}
-          allStores={stores}
-          timeframe={timeframe}
-          metric={metric}
-          onClose={() => setShowTextModal(false)}
-          neonGreen={neonGreen}
-        />
-      )}
+        return (
+          <div className="min-h-screen bg-slate-950 text-white p-4" onTouchStart={onDetailTouchStart} onTouchEnd={onDetailTouchEnd}>
+            {showTextModal && (
+              <TextModal
+                store={s}
+                allStores={stores}
+                timeframe={timeframe}
+                metric={metric}
+                onClose={() => setShowTextModal(false)}
+                neonGreen={neonGreen}
+              />
+            )}
 
-      {/* Top bar */}
-      <div className="flex justify-between items-center mb-4">
-        <button onClick={() => setSelectedStore(null)} style={{ color: neonGreen }}>← Back</button>
-        <button onClick={handleLogout} className="text-xs text-slate-500">Logout</button>
-      </div>
+            <div className="flex justify-between items-center mb-4">
+              <button onClick={() => setSelectedStore(null)} style={{ color: neonGreen }}>
+                ← Back
+              </button>
+              <button onClick={handleLogout} className="text-xs text-slate-500">
+                Logout
+              </button>
+            </div>
 
-      {/* Header with rank badge */}
-      <div className="mb-4">
-        {(() => {
-          const { rank, total } = getRankInfo(s);
-          const rankLine = (rank ? `#${rank} ${metricLabel} ${tfLabel}` : `${metricLabel} ${tfLabel}`);
-          return (
-            <>
+            <div className="mb-4">
               <div className="flex items-baseline gap-3">
                 <h2 className="text-2xl font-bold" style={{ color: neonGreen }}>
                   {getAbbrev(s)}
                 </h2>
                 <span className="text-xs font-mono px-2 py-1 rounded border border-slate-700 text-slate-300">
-                  {rankLine}{total ? ` / ${total}` : ''}
+                  {rankLine}{total ? ` / ${total}` : ""}
                 </span>
               </div>
-
-              <p className="text-sm text-slate-400">{s['Store']}</p>
-              <p className="text-xs text-slate-500 mt-1">{s['Date']}</p>
+              <p className="text-sm text-slate-400">{s["Store"]}</p>
+              <p className="text-xs text-slate-500 mt-1">{s["Date"]}</p>
               <p className="text-[11px] text-slate-600 mt-2">Swipe left/right to change stores</p>
-            </>
-          );
-        })()}
-      </div>
+            </div>
 
-      <button
-        onClick={() => setShowTextModal(true)}
-        className="w-full mb-4 py-3 rounded font-medium text-slate-950 flex items-center justify-center gap-2"
-        style={{ backgroundColor: neonGreen }}
-      >
-        💬 Send Encouragement
-      </button>
+            <button
+              onClick={() => setShowTextModal(true)}
+              className="w-full mb-4 py-3 rounded font-medium text-slate-950 flex items-center justify-center gap-2"
+              style={{ backgroundColor: neonGreen }}
+            >
+              💬 Send Encouragement
+            </button>
 
-      {/* Keep your existing metric cards + WeeklyChart exactly as you had them below */}
-      <div className="space-y-4">
-        <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-          <h3 className="text-slate-400 text-sm mb-3">Sales</h3>
-          <div className="grid grid-cols-4 gap-3">
-            <MetricBlock label="Today" currentField="Sales_Today" lyField="Sales_TodayLY" store={s} />
-            <MetricBlock label="WTD" currentField="Sales_WTD" lyField="Sales_WTDLY" store={s} />
-            <MetricBlock label="MTD" currentField="Sales_MTD" lyField="Sales_MTDLY" store={s} />
-            <MetricBlock label="YTD" currentField="Sales_YTD" lyField="Sales_YTDLY" store={s} />
+            <div className="space-y-4">
+              <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
+                <h3 className="text-slate-400 text-sm mb-3">Sales</h3>
+                <div className="grid grid-cols-4 gap-3">
+                  <MetricBlock label="Today" currentField="Sales_Today" lyField="Sales_TodayLY" store={s} />
+                  <MetricBlock label="WTD" currentField="Sales_WTD" lyField="Sales_WTDLY" store={s} />
+                  <MetricBlock label="MTD" currentField="Sales_MTD" lyField="Sales_MTDLY" store={s} />
+                  <MetricBlock label="YTD" currentField="Sales_YTD" lyField="Sales_YTDLY" store={s} />
+                </div>
+              </div>
+
+              <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
+                <h3 className="text-slate-400 text-sm mb-3">GP Dollars</h3>
+                <div className="grid grid-cols-4 gap-3">
+                  <MetricBlock label="Today" currentField="GP_Today" lyField="GP_TodayLY" store={s} />
+                  <MetricBlock label="WTD" currentField="GP_WTD" lyField="GP_WTDLY" store={s} />
+                  <MetricBlock label="MTD" currentField="GP_MTD" lyField="GP_MTDLY" store={s} />
+                  <MetricBlock label="YTD" currentField="GP_YTD" lyField="GP_YTDLY" store={s} />
+                </div>
+              </div>
+
+              <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
+                <h3 className="text-slate-400 text-sm mb-3">GP %</h3>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500">YTD</span>
+                  <span className="text-2xl font-mono font-bold" style={{ color: neonGreen }}>
+                    {s["GP%_YTD"] != null ? (s["GP%_YTD"] * 100).toFixed(1) + "%" : "—"}
+                  </span>
+                </div>
+              </div>
+
+              <WeeklyChart storeName={s["Store"]} allRecords={allRecords} neonGreen={neonGreen} />
+            </div>
           </div>
-        </div>
-
-        <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-          <h3 className="text-slate-400 text-sm mb-3">GP Dollars</h3>
-          <div className="grid grid-cols-4 gap-3">
-            <MetricBlock label="Today" currentField="GP_Today" lyField="GP_TodayLY" store={s} />
-            <MetricBlock label="WTD" currentField="GP_WTD" lyField="GP_WTDLY" store={s} />
-            <MetricBlock label="MTD" currentField="GP_MTD" lyField="GP_MTDLY" store={s} />
-            <MetricBlock label="YTD" currentField="GP_YTD" lyField="GP_YTDLY" store={s} />
-          </div>
-        </div>
-
-        <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-          <h3 className="text-slate-400 text-sm mb-3">GP %</h3>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500">YTD</span>
-            <span className="text-2xl font-mono font-bold" style={{ color: neonGreen }}>
-              {s['GP%_YTD'] != null ? (s['GP%_YTD'] * 100).toFixed(1) + '%' : '—'}
-            </span>
-          </div>
-        </div>
-
-        <WeeklyChart storeName={s['Store']} allRecords={allRecords} neonGreen={neonGreen} />
-      </div>
-    </div>
-  );
-}
+        );
+      }
 
       // Main overview
-      const sortedStores = [...stores].sort((a,b)=>getCur(b)-getCur(a));
+      const sortedStores = orderedStores;
 
       return (
         <div className="min-h-screen bg-slate-950 text-white p-4">
@@ -739,44 +859,45 @@ if (selectedStore) {
               allStores={stores}
               timeframe={timeframe}
               metric={metric}
-              onClose={()=>setTextStore(null)}
+              onClose={() => setTextStore(null)}
               neonGreen={neonGreen}
             />
           )}
-
-          {showTextAllModal && (
-            <TextAllModal
-              stores={stores}
-              timeframe={timeframe}
-              metric={metric}
-              onClose={()=>setShowTextAllModal(false)}
-              neonGreen={neonGreen}
-            />
-          )}
+          {showTextAllModal && <TextAllModal stores={stores} timeframe={timeframe} metric={metric} onClose={() => setShowTextAllModal(false)} neonGreen={neonGreen} />}
 
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h1 className="text-2xl font-bold mb-1" style={{color:neonGreen}}>RVP Dashboard</h1>
-              <p className="text-sm text-slate-400">{reportDate||'Loading...'}</p>
+              <h1 className="text-2xl font-bold mb-1" style={{ color: neonGreen }}>
+                RVP Dashboard
+              </h1>
+              <p className="text-sm text-slate-400">{reportDate || "Loading..."}</p>
               {createdTime && (
                 <p className="text-xs text-slate-500">
-                  Updated {new Date(createdTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                  Updated {new Date(createdTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={()=>setShowSettings(true)} className="text-slate-500"><GearIcon className="w-5 h-5" /></button>
-              <button onClick={handleLogout} className="text-xs text-slate-500">Logout</button>
+              <button onClick={() => setShowSettings(true)} className="text-slate-500">
+                <GearIcon className="w-5 h-5" />
+              </button>
+              <button onClick={handleLogout} className="text-xs text-slate-500">
+                Logout
+              </button>
             </div>
           </div>
 
           <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
-            <div className="text-sm text-slate-400 mb-1">Total {metric==='sales'?'Sales':'GP$'} — {timeframe.toUpperCase()}</div>
-            <div className="text-3xl font-mono font-bold mb-1" style={{color:neonGreen}}>{fmtCurrency(totalCur)}</div>
+            <div className="text-sm text-slate-400 mb-1">Total {metric === "sales" ? "Sales" : "GP$"} — {timeframe.toUpperCase()}</div>
+            <div className="text-3xl font-mono font-bold mb-1" style={{ color: neonGreen }}>
+              {fmtCurrency(totalCur)}
+            </div>
             {totalChange !== null && (
               <div className="flex items-center gap-2">
-                {totalChange>=0?<ArrowUp className="w-4 h-4" style={{color:neonGreen}}/>:<ArrowDown className="w-4 h-4" style={{color:neonRed}}/>}
-                <span className="text-sm font-mono" style={{color:totalChange>=0?neonGreen:neonRed}}>{totalChange.toFixed(1)}% vs LY</span>
+                {totalChange >= 0 ? <ArrowUp className="w-4 h-4" style={{ color: neonGreen }} /> : <ArrowDown className="w-4 h-4" style={{ color: neonRed }} />}
+                <span className="text-sm font-mono" style={{ color: totalChange >= 0 ? neonGreen : neonRed }}>
+                  {totalChange.toFixed(1)}% vs LY
+                </span>
               </div>
             )}
           </div>
@@ -784,12 +905,17 @@ if (selectedStore) {
           <div className="flex gap-3 mb-6">
             <div className="flex-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
               <div className="grid grid-cols-4 gap-1">
-                {[{value:'today',label:'Today'},{value:'wtd',label:'WTD'},{value:'mtd',label:'MTD'},{value:'ytd',label:'YTD'}].map(tf=>(
+                {[
+                  { value: "today", label: "Today" },
+                  { value: "wtd", label: "WTD" },
+                  { value: "mtd", label: "MTD" },
+                  { value: "ytd", label: "YTD" },
+                ].map((tf) => (
                   <button
                     key={tf.value}
-                    onClick={()=>setTimeframe(tf.value)}
-                    className={'py-2 px-2 rounded text-xs font-medium '+(timeframe===tf.value?'text-slate-950':'text-slate-400')}
-                    style={timeframe===tf.value?{backgroundColor:neonGreen}:{}}
+                    onClick={() => setTimeframe(tf.value)}
+                    className={"py-2 px-2 rounded text-xs font-medium " + (timeframe === tf.value ? "text-slate-950" : "text-slate-400")}
+                    style={timeframe === tf.value ? { backgroundColor: neonGreen } : {}}
                   >
                     {tf.label}
                   </button>
@@ -799,12 +925,15 @@ if (selectedStore) {
 
             <div className="bg-slate-900 rounded-lg p-1 border border-slate-800">
               <div className="grid grid-cols-2 gap-1">
-                {[{value:'sales',label:'Sales'},{value:'gp',label:'GP$'}].map(m=>(
+                {[
+                  { value: "sales", label: "Sales" },
+                  { value: "gp", label: "GP$" },
+                ].map((m) => (
                   <button
                     key={m.value}
-                    onClick={()=>setMetric(m.value)}
-                    className={'py-2 px-3 rounded text-xs font-medium '+(metric===m.value?'text-slate-950':'text-slate-400')}
-                    style={metric===m.value?{backgroundColor:neonGreen}:{}}
+                    onClick={() => setMetric(m.value)}
+                    className={"py-2 px-3 rounded text-xs font-medium " + (metric === m.value ? "text-slate-950" : "text-slate-400")}
+                    style={metric === m.value ? { backgroundColor: neonGreen } : {}}
                   >
                     {m.label}
                   </button>
@@ -814,35 +943,45 @@ if (selectedStore) {
           </div>
 
           <div className="space-y-2 mb-4">
-            {sortedStores.map(store => {
-              const cur=getCur(store), ly=getLY(store), change=calcChange(cur,ly);
+            {sortedStores.map((store) => {
+              const cur = getCur(store);
+              const ly = getLY(store);
+              const change = calcChange(cur, ly);
+
               return (
-                <div key={store['Store']} className="w-full bg-slate-900 rounded-lg border border-slate-800 flex items-center overflow-hidden">
+                <div key={store["Store"]} className="w-full bg-slate-900 rounded-lg border border-slate-800 flex items-center overflow-hidden">
                   <button
-                    onClick={e => { e.stopPropagation(); setTextStore(store); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTextStore(store);
+                    }}
                     className="flex-shrink-0 flex items-center justify-center px-3 h-full min-h-14 border-r border-slate-700"
-                    style={{minWidth:'52px'}}
+                    style={{ minWidth: "52px" }}
                     title="Tap to text manager"
                   >
-                    <span className="text-xs font-bold px-2 py-1 rounded" style={{backgroundColor:'rgba(0,255,65,0.15)',color:neonGreen}}>
+                    <span className="text-xs font-bold px-2 py-1 rounded" style={{ backgroundColor: "rgba(0,255,65,0.15)", color: neonGreen }}>
                       {getAbbrev(store)}
                     </span>
                   </button>
 
-                  <button onClick={()=>setSelectedStore(store)} className="flex-1 flex items-center justify-between p-4 text-left">
+                  <button onClick={() => setSelectedStore(store)} className="flex-1 flex items-center justify-between p-4 text-left">
                     <div>
-                      <div className="text-xs text-slate-500">{store['Store']}</div>
+                      <div className="text-xs text-slate-500">{store["Store"]}</div>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
                         <div className="font-mono text-lg">{fmtCurrency(cur)}</div>
-                        {change!==null
-                          ? <div className="text-xs font-mono" style={{color:change>=0?neonGreen:neonRed}}>{change>=0?'+':''}{change.toFixed(1)}%</div>
-                          : <div className="text-xs text-slate-600">No LY</div>
-                        }
+                        {change !== null ? (
+                          <div className="text-xs font-mono" style={{ color: change >= 0 ? neonGreen : neonRed }}>
+                            {change >= 0 ? "+" : ""}
+                            {change.toFixed(1)}%
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-600">No LY</div>
+                        )}
                       </div>
                       <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <polyline points="9 18 15 12 9 6"/>
+                        <polyline points="9 18 15 12 9 6" />
                       </svg>
                     </div>
                   </button>
@@ -850,11 +989,19 @@ if (selectedStore) {
               );
             })}
           </div>
+
+          <button
+            onClick={() => setShowTextAllModal(true)}
+            className="w-full py-3 rounded font-medium text-slate-950"
+            style={{ backgroundColor: neonGreen }}
+          >
+            📣 Text All Managers
+          </button>
         </div>
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
+    const root = ReactDOM.createRoot(document.getElementById("root"));
     root.render(<RVPDashboard />);
   </script>
 </body>
