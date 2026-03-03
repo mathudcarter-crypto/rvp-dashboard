@@ -631,98 +631,102 @@
         );
       }
 
-      // Store detail view (with swipe handlers)
-      if (selectedStore) {
-        const s = selectedStore;
-        return (
-          <div
-            className="min-h-screen bg-slate-950 text-white p-4"
-            onTouchStart={onDetailTouchStart}
-            onTouchEnd={onDetailTouchEnd}
-          >
-            {showTextModal && (
-              <TextModal
-                store={s}
-                allStores={stores}
-                timeframe={timeframe}
-                metric={metric}
-                onClose={()=>setShowTextModal(false)}
-                neonGreen={neonGreen}
-              />
-            )}
+// Store detail view (with swipe handlers)
+if (selectedStore) {
+  const s = selectedStore;
 
-           <div className="mb-4">
-  {(() => {
-    const { rank, total } = getRankInfo(s);
-    const rankLine = (rank ? `#${rank} ${metricLabel} ${tfLabel}` : `${metricLabel} ${tfLabel}`);
-    return (
-      <>
-        <div className="flex items-baseline gap-3">
-          <h2 className="text-2xl font-bold" style={{color:neonGreen}}>{getAbbrev(s)}</h2>
-          <span className="text-xs font-mono px-2 py-1 rounded border border-slate-700 text-slate-300">
-            {rankLine}{total ? ` / ${total}` : ''}
-          </span>
-        </div>
+  return (
+    <div
+      className="min-h-screen bg-slate-950 text-white p-4"
+      onTouchStart={onDetailTouchStart}
+      onTouchEnd={onDetailTouchEnd}
+    >
+      {showTextModal && (
+        <TextModal
+          store={s}
+          allStores={stores}
+          timeframe={timeframe}
+          metric={metric}
+          onClose={() => setShowTextModal(false)}
+          neonGreen={neonGreen}
+        />
+      )}
 
-        <p className="text-sm text-slate-400">{s['Store']}</p>
-        <p className="text-xs text-slate-500 mt-1">{s['Date']}</p>
-      </>
-    );
-  })()}
-</div>
-              <button onClick={()=>setSelectedStore(null)} style={{color:neonGreen}}>← Back</button>
-              <button onClick={handleLogout} className="text-xs text-slate-500">Logout</button>
-            </div>
+      {/* Top bar */}
+      <div className="flex justify-between items-center mb-4">
+        <button onClick={() => setSelectedStore(null)} style={{ color: neonGreen }}>← Back</button>
+        <button onClick={handleLogout} className="text-xs text-slate-500">Logout</button>
+      </div>
 
-            <div className="mb-4">
-              <h2 className="text-2xl font-bold" style={{color:neonGreen}}>{getAbbrev(s)}</h2>
+      {/* Header with rank badge */}
+      <div className="mb-4">
+        {(() => {
+          const { rank, total } = getRankInfo(s);
+          const rankLine = (rank ? `#${rank} ${metricLabel} ${tfLabel}` : `${metricLabel} ${tfLabel}`);
+          return (
+            <>
+              <div className="flex items-baseline gap-3">
+                <h2 className="text-2xl font-bold" style={{ color: neonGreen }}>
+                  {getAbbrev(s)}
+                </h2>
+                <span className="text-xs font-mono px-2 py-1 rounded border border-slate-700 text-slate-300">
+                  {rankLine}{total ? ` / ${total}` : ''}
+                </span>
+              </div>
+
               <p className="text-sm text-slate-400">{s['Store']}</p>
               <p className="text-xs text-slate-500 mt-1">{s['Date']}</p>
-
-              {/* Optional little hint */}
               <p className="text-[11px] text-slate-600 mt-2">Swipe left/right to change stores</p>
-            </div>
+            </>
+          );
+        })()}
+      </div>
 
-            <button onClick={()=>setShowTextModal(true)} className="w-full mb-4 py-3 rounded font-medium text-slate-950 flex items-center justify-center gap-2" style={{backgroundColor:neonGreen}}>
-              💬 Send Encouragement
-            </button>
+      <button
+        onClick={() => setShowTextModal(true)}
+        className="w-full mb-4 py-3 rounded font-medium text-slate-950 flex items-center justify-center gap-2"
+        style={{ backgroundColor: neonGreen }}
+      >
+        💬 Send Encouragement
+      </button>
 
-            <div className="space-y-4">
-              <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-                <h3 className="text-slate-400 text-sm mb-3">Sales</h3>
-                <div className="grid grid-cols-4 gap-3">
-                  <MetricBlock label="Today" currentField="Sales_Today" lyField="Sales_TodayLY" store={s} />
-                  <MetricBlock label="WTD"   currentField="Sales_WTD"   lyField="Sales_WTDLY"   store={s} />
-                  <MetricBlock label="MTD"   currentField="Sales_MTD"   lyField="Sales_MTDLY"   store={s} />
-                  <MetricBlock label="YTD"   currentField="Sales_YTD"   lyField="Sales_YTDLY"   store={s} />
-                </div>
-              </div>
-
-              <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-                <h3 className="text-slate-400 text-sm mb-3">GP Dollars</h3>
-                <div className="grid grid-cols-4 gap-3">
-                  <MetricBlock label="Today" currentField="GP_Today" lyField="GP_TodayLY" store={s} />
-                  <MetricBlock label="WTD"   currentField="GP_WTD"   lyField="GP_WTDLY"   store={s} />
-                  <MetricBlock label="MTD"   currentField="GP_MTD"   lyField="GP_MTDLY"   store={s} />
-                  <MetricBlock label="YTD"   currentField="GP_YTD"   lyField="GP_YTDLY"   store={s} />
-                </div>
-              </div>
-
-              <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-                <h3 className="text-slate-400 text-sm mb-3">GP %</h3>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-500">YTD</span>
-                  <span className="text-2xl font-mono font-bold" style={{color:neonGreen}}>
-                    {s['GP%_YTD'] != null ? (s['GP%_YTD']*100).toFixed(1)+'%' : '—'}
-                  </span>
-                </div>
-              </div>
-
-              <WeeklyChart storeName={s['Store']} allRecords={allRecords} neonGreen={neonGreen} />
-            </div>
+      {/* Keep your existing metric cards + WeeklyChart exactly as you had them below */}
+      <div className="space-y-4">
+        <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
+          <h3 className="text-slate-400 text-sm mb-3">Sales</h3>
+          <div className="grid grid-cols-4 gap-3">
+            <MetricBlock label="Today" currentField="Sales_Today" lyField="Sales_TodayLY" store={s} />
+            <MetricBlock label="WTD" currentField="Sales_WTD" lyField="Sales_WTDLY" store={s} />
+            <MetricBlock label="MTD" currentField="Sales_MTD" lyField="Sales_MTDLY" store={s} />
+            <MetricBlock label="YTD" currentField="Sales_YTD" lyField="Sales_YTDLY" store={s} />
           </div>
-        );
-      }
+        </div>
+
+        <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
+          <h3 className="text-slate-400 text-sm mb-3">GP Dollars</h3>
+          <div className="grid grid-cols-4 gap-3">
+            <MetricBlock label="Today" currentField="GP_Today" lyField="GP_TodayLY" store={s} />
+            <MetricBlock label="WTD" currentField="GP_WTD" lyField="GP_WTDLY" store={s} />
+            <MetricBlock label="MTD" currentField="GP_MTD" lyField="GP_MTDLY" store={s} />
+            <MetricBlock label="YTD" currentField="GP_YTD" lyField="GP_YTDLY" store={s} />
+          </div>
+        </div>
+
+        <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
+          <h3 className="text-slate-400 text-sm mb-3">GP %</h3>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-500">YTD</span>
+            <span className="text-2xl font-mono font-bold" style={{ color: neonGreen }}>
+              {s['GP%_YTD'] != null ? (s['GP%_YTD'] * 100).toFixed(1) + '%' : '—'}
+            </span>
+          </div>
+        </div>
+
+        <WeeklyChart storeName={s['Store']} allRecords={allRecords} neonGreen={neonGreen} />
+      </div>
+    </div>
+  );
+}
 
       // Main overview
       const sortedStores = [...stores].sort((a,b)=>getCur(b)-getCur(a));
