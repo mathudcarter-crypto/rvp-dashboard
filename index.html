@@ -551,17 +551,17 @@
       const totalCur = stores.reduce((a,s)=>a+(getCur(s)||0),0);
       const totalLY  = stores.reduce((a,s)=>a+(getLY(s)||0),0);
       // --- Rank helpers (based on current metric + timeframe) ---
-const currentField = FIELD_MAP[metric][timeframe].current;
-const orderedStores = [...stores].sort((a, b) => ((b[currentField] || 0) - (a[currentField] || 0)));
+      const rankField = FIELD_MAP[metric][timeframe].current;
+      const rankedStores = [...stores].sort((a, b) => (getCur(b) - getCur(a)));
 
-const getRankInfo = (store) => {
-  if (!store) return { rank: null, total: orderedStores.length };
-  const idx = orderedStores.findIndex(s => s['Store'] === store['Store']);
-  return { rank: idx >= 0 ? idx + 1 : null, total: orderedStores.length };
-};
+      const getRankInfo = (store) => {
+        if (!store) return { rank: null, total: rankedStores.length };
+      const idx = rankedStores.findIndex(s => s['Store'] === store['Store']);
+      return { rank: idx >= 0 ? idx + 1 : null, total: rankedStores.length };
+    };
 
-const metricLabel = metric === 'sales' ? 'Sales' : 'GP';
-const tfLabel = timeframe.toUpperCase();
+      const metricLabel = metric === 'sales' ? 'Sales' : 'GP';
+      const tfLabel = timeframe.toUpperCase();
       const totalChange = calcChange(totalCur, totalLY);
 
       const ChangeLabel = ({current,ly}) => {
