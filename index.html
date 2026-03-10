@@ -106,89 +106,127 @@
       return `You're only ${diff} behind ${aheadCity} for #${myRank - 1} in ${metricLabel} ${timeLabel} ${suffix}. You've got this! 💪`;
     };
 
-    // Weekly chart
-    const DAY_LABELS = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"];
-    const getWeekDays = (referenceDate) => {
-      const d = new Date(referenceDate + "T12:00:00");
-      const daysFromSat = (d.getDay() + 1) % 7;
-      const sat = new Date(d);
-      sat.setDate(d.getDate() - daysFromSat);
-      const days = [];
-      for (let i = 0; i < 7; i++) {
-        const dd = new Date(sat);
-        dd.setDate(sat.getDate() + i);
-        days.push(dd.toISOString().split("T")[0]);
-      }
-      return days;
-    };
+// Weekly chart
+const DAY_LABELS = ["Fri", "Sat", "Mon", "Tue", "Wed", "Thu"];
 
-    function WeeklyChart({ storeName, allRecords, neonGreen }) {
-      const storeRecords = allRecords.filter((r) => r.fields["Store"] === storeName);
-      if (storeRecords.length === 0) return null;
+const getWeekDaysFridayStart = (referenceDate) => {
+  const d = new Date(referenceDate + "T12:00:00");
+  const jsDay = d.getDay(); // Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6
 
-      const latestDate = storeRecords.map((r) => r.fields["Date"]).filter(Boolean).sort().reverse()[0];
-      if (!latestDate) return null;
+  // Find most recent Friday
+  const daysFromFriday = (jsDay - 5 + 7) % 7;
+  const fri = new Date(d);
+  fri.setDate(d.getDate() - daysFromFriday);
 
-      const weekDays = getWeekDays(latestDate);
-      const barData = weekDays.map((date, idx) => {
-        const dayRecs = storeRecords
-          .filter((r) => r.fields["Date"] === date)
-          .sort((a, b) => new Date(b.fields["Created"] || b.createdTime || 0) - new Date(a.fields["Created"] || a.createdTime || 0));
-        const val = dayRecs.length > 0 ? dayRecs[0].fields["Sales_Today"] || 0 : null;
-        return { date, val, label: DAY_LABELS[idx], isToday: date === latestDate };
-      });
+  const offsets = [0, 1, 3, 4, 5, 6]; // Fri, Sat, Mon, Tue, Wed, Thu (skip Sunday)
+  return offsets.map((offset) => {
+    const dd = new Date(fri);
+    dd.setDate(fri.getDate() + offset);
+    return dd.toISOString().split("T")[0];
+  });
+};
 
-      const maxVal = Math.max(...barData.map((d) => d.val || 0), 1);
-      const fmtK = (v) =>
-        v >= 1000000 ? "$" + (v / 1000000).toFixed(1) + "M" : v >= 1000 ? "$" + (v / 1000).toFixed(0) + "K" : "$" + v;
+function WeeklyChart({ storeName, allRecords, neonGreen }) {
+  const storeRecords = allRecords.filter((r) => r.fields["Store"] === storeName);
+  if (storeRecords.length === 0) return null;
 
-      const chartH = 80,
-        barW = 28,
-        gap = 12,
-        totalW = 7 * (barW + gap) - gap;
+  const latestDate = storeRecords
+    .map((r) => r.fields["Date"])
+    .filter(Boolean)
+    .sort()
+    .reverse()[0];
 
-      return (
-        <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-          <h3 className="text-slate-400 text-sm mb-3">Daily Sales This Week</h3>
-          <svg width="100%" viewBox={`0 0 ${totalW + 10} ${chartH + 30}`} style={{ overflow: "visible" }}>
-            {barData.map((d, i) => {
-              const x = i * (barW + gap);
-              const barH = d.val != null && d.val > 0 ? Math.max((d.val / maxVal) * chartH, 3) : 0;
-              const y = chartH - barH;
-              const color = d.val == null || d.val === 0 ? "#1e293b" : d.isToday ? neonGreen : "rgba(34,197,94,0.4)";
-              return (
-                <g key={d.date}>
-                  <rect
-                    x={x}
-                    y={barH > 0 ? y : 0}
-                    width={barW}
-                    height={barH > 0 ? barH : chartH}
-                    rx="4"
-                    fill={color}
-                    opacity={barH === 0 ? 0.25 : 1}
-                  />
-                  {d.val != null && d.val > 0 && (
-                    <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize="7" fill={d.isToday ? neonGreen : "#94a3b8"}>
-                      {fmtK(d.val)}
-                    </text>
-                  )}
-                  <text
-                    x={x + barW / 2}
-                    y={chartH + 14}
-                    textAnchor="middle"
-                    fontSize="9"
-                    fill={d.isToday ? neonGreen : "#64748b"}
-                    fontWeight={d.isToday ? "bold" : "normal"}
-                  >
-                    {d.label}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-        </div>
+  if (!latestDate) return null;
+
+  const weekDays = getWeekDaysFridayStart(latestDate);
+
+  const barData = weekDays.map((date, idx) => {
+    const dayRecs = storeRecords
+      .filter((r) => r.fields["Date"] === date)
+      .sort(
+        (a, b) =>
+          new Date(b.fields["Created"] || b.createdTime || 0) -
+          new Date(a.fields["Created"] || a.createdTime || 0)
       );
-    }
+
+    const val = dayRecs.length > 0 ? dayRecs[0].fields["Sales_Today"] || 0 : null;
+
+    return {
+      date,
+      val,
+      label: DAY_LABELS[idx],
+      isToday: date === latestDate,
+    };
+  });
+
+  const maxVal = Math.max(...barData.map((d) => d.val || 0), 1);
+
+  const fmtK = (v) =>
+    v >= 1000000
+      ? "$" + (v / 1000000).toFixed(1) + "M"
+      : v >= 1000
+      ? "$" + (v / 1000).toFixed(0) + "K"
+      : "$" + v;
+
+  const chartH = 80;
+  const barW = 28;
+  const gap = 12;
+  const totalW = barData.length * (barW + gap) - gap;
+
+  return (
+    <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
+      <h3 className="text-slate-400 text-sm mb-3">Daily Sales This Week</h3>
+      <svg width="100%" viewBox={`0 0 ${totalW + 10} ${chartH + 30}`} style={{ overflow: "visible" }}>
+        {barData.map((d, i) => {
+          const x = i * (barW + gap);
+          const barH = d.val != null && d.val > 0 ? Math.max((d.val / maxVal) * chartH, 3) : 0;
+          const y = chartH - barH;
+          const color =
+            d.val == null || d.val === 0
+              ? "#1e293b"
+              : d.isToday
+              ? neonGreen
+              : "rgba(34,197,94,0.4)";
+
+          return (
+            <g key={d.date}>
+              <rect
+                x={x}
+                y={barH > 0 ? y : 0}
+                width={barW}
+                height={barH > 0 ? barH : chartH}
+                rx="4"
+                fill={color}
+                opacity={barH === 0 ? 0.25 : 1}
+              />
+              {d.val != null && d.val > 0 && (
+                <text
+                  x={x + barW / 2}
+                  y={y - 4}
+                  textAnchor="middle"
+                  fontSize="7"
+                  fill={d.isToday ? neonGreen : "#94a3b8"}
+                >
+                  {fmtK(d.val)}
+                </text>
+              )}
+              <text
+                x={x + barW / 2}
+                y={chartH + 14}
+                textAnchor="middle"
+                fontSize="9"
+                fill={d.isToday ? neonGreen : "#64748b"}
+                fontWeight={d.isToday ? "bold" : "normal"}
+              >
+                {d.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
 
     function SettingsScreen({ onClose, neonGreen }) {
       const [messages, setMessages] = useState(loadPresets());
